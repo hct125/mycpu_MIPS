@@ -27,7 +27,7 @@ module testbench();
 	wire[31:0] writedata,dataadr;
 	wire memwrite;
 
-	top dut(clk,rst,writedata,dataadr,memwrite);
+	mycpu_top dut(clk,rst,writedata,dataadr,memwrite);
 
 	/*iverilog */
 	initial
