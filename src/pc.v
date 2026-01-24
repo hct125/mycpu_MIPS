@@ -1,16 +1,18 @@
 `timescale 1ns / 1ps
-//PCÄ£¿é£¬ÏÂ½µÑØ´¥·¢
-module pc(
+// PC?? - ????
+// ? en=0 ???PC????????
+
+module pc #(parameter WIDTH = 32)(
     input wire clk,rst,en,
-    input wire [31:0] din,
-    output reg [31:0] q
-    );
-    always @(negedge clk) begin
-        if(rst) q<=32'b0;
-        else begin
-            if(en != 1) q<=32'b0;
-            else q<=din;
+    input wire [WIDTH-1:0] din,
+    output reg [WIDTH-1:0] q
+);
+    always @(posedge clk, posedge rst) begin
+        if(rst) begin
+            q <= 0;
+        end else if(en) begin
+            q <= din;
         end
+        // ? en=0 ???? q ???????
     end
 endmodule
-

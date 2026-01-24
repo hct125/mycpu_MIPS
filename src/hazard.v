@@ -1,58 +1,75 @@
 `timescale 1ns / 1ps
-/*Ã°ÏÕ½â¾ö£º£¨Êı¾İÃ°ÏÕ£©Êı¾İÇ°ÍÆ+Á÷Ë®ÏßÔİÍ£¡¢£¨¿ØÖÆÃ°ÏÕ£©ÌáÇ°ÅĞ¶Ï·ÖÖ§µ¼ÖÂµÄÊı¾İÇ°ÍÆ¡¢Á÷Ë®ÏßÔİÍ£
-    ÆäÖĞÁ÷Ë®ÏßÔİÍ£Ê±ĞèÒªÇå¿ÕÏÂÒ»¼¶Á÷Ë®Ïß¡£ÌáÇ°ÅĞ¶Ï·ÖÖ§·ÅÔÚdatapathÀïÊµÏÖ£¬²¢²»ÔÚhazardÖĞÊµÏÖ
-*/
+// å†’é™©æ£€æµ‹æ¨¡å—ï¼šæ”¯æŒæ•°æ®è½¬å‘+æµæ°´çº¿é˜»å¡
+// æ”¯æŒ12æ¡è½¬ç§»æŒ‡ä»¤çš„å†’é™©å¤„ç†
+
 module hazard(
     input wire rst,
-    input wire [4:0] rsD,       //instr2[25:21]£¨Í¬Ò»Ê±¿ÌrsDºÍrsE¶ÔÓ¦ÏÈºóÁ½ÌõÖ¸ÁîµÄrs×Ö¶Î£¬²¢²»ÏàÍ¬£©
-    input wire [4:0] rtD,       //instr2[20:15]
-    input wire [4:0] rsE,       //instr1[25:21]
-    input wire [4:0] rtE,       //instr1[20:15]
-    input wire regwriteE,       //¼Ä´æÆ÷¶ÑµÄĞ´Ê¹ÄÜĞÅºÅ£¨E¡¢M¡¢W±íÊ¾excute¡¢memoryºÍwriteback½×¶Î£©
-    input wire regwriteM,  
-    input wire regwriteW,  
-    input wire memtoregE,       //ÅĞ¶ÏĞ´»Ø¼Ä´æÆ÷¶ÑµÄÊı¾İÊÇswµÄReadData(0)»¹ÊÇRµÄALUOut(1)
-    input wire memtoregM,
-    input wire branchD,         //ÌáÇ°ÅĞ¶Ï·ÖÖ§
-    input wire [4:0] writeregE, //¼Ä´æÆ÷¶ÑµÄĞ´µØÖ·£¬Á¬½Ówa3W
-    input wire [4:0] writeregM,
-    input wire [4:0] writeregW,
-    output [1:0] forwordAE,     //ÔÚexcute½×¶Î¿ØÖÆmux3Ñ¡ÔñSrcA£¨Êı¾İÃ°ÏÕ£©
-    output [1:0] forwordBE,     //ÔÚexcute½×¶Î¿ØÖÆmux3Ñ¡ÔñSrcB
-    output [1:0] forwordAD,     //ÔÚdecode½×¶Î¿ØÖÆ¶şÑ¡Ò»Ñ¡Ôñregfile rd1³öÀ´µÄÊı¾İ£¨¿ØÖÆÃ°ÏÕÏÂµÄÊı¾İÃ°ÏÕ£©
-    output [1:0] forwordBD,     //ÔÚdecode½×¶Î¿ØÖÆ¶şÑ¡Ò»Ñ¡Ôñregfile rd2³öÀ´µÄÊı¾İ
-    output reg stallF,          //instr fetch¼¶ÔİÍ£
-    output reg stallD,          //decoderÔİÍ£
-    output reg flushE           //excute¶Áµ½µÄÁ÷Ë®ÏßĞèÒªÇå¿Õ
+    input wire [4:0] rsD,       // Dé˜¶æ®µrs
+    input wire [4:0] rtD,       // Dé˜¶æ®µrt
+    input wire [4:0] rsE,       // Eé˜¶æ®µrs
+    input wire [4:0] rtE,       // Eé˜¶æ®µrt
+    input wire regwriteE,       // Eé˜¶æ®µå†™å¯„å­˜å™¨ä½¿èƒ½
+    input wire regwriteM,       // Mé˜¶æ®µå†™å¯„å­˜å™¨ä½¿èƒ½
+    input wire regwriteW,       // Wé˜¶æ®µå†™å¯„å­˜å™¨ä½¿èƒ½
+    input wire memtoregE,       // Eé˜¶æ®µæ˜¯å¦ä»å†…å­˜è¯»å–
+    input wire memtoregM,       // Mé˜¶æ®µæ˜¯å¦ä»å†…å­˜è¯»å–
+    input wire branchD,         // Dé˜¶æ®µæ˜¯å¦ä¸ºåˆ†æ”¯æŒ‡ä»¤
+    input wire [4:0] writeregE, // Eé˜¶æ®µç›®æ ‡å¯„å­˜å™¨
+    input wire [4:0] writeregM, // Mé˜¶æ®µç›®æ ‡å¯„å­˜å™¨
+    input wire [4:0] writeregW, // Wé˜¶æ®µç›®æ ‡å¯„å­˜å™¨
+    output [1:0] forwordAE,     // Eé˜¶æ®µSrcAè½¬å‘æ§åˆ¶
+    output [1:0] forwordBE,     // Eé˜¶æ®µSrcBè½¬å‘æ§åˆ¶
+    output [1:0] forwordAD,     // Dé˜¶æ®µrsè½¬å‘æ§åˆ¶
+    output [1:0] forwordBD,     // Dé˜¶æ®µrtè½¬å‘æ§åˆ¶
+    output wire stallF,         // Fé˜¶æ®µæš‚åœ
+    output wire stallD,         // Dé˜¶æ®µæš‚åœ
+    output wire flushE,         // Eé˜¶æ®µæ¸…ç©º
+    input wire jump_conflictD,  // è·³è½¬å†²çªï¼ˆJR/JALRçš„rsæœ‰æ•°æ®å†’é™©ï¼‰
+    input wire linkE            // Eé˜¶æ®µæ˜¯å¦ä¸ºLinkæŒ‡ä»¤
+);
+
+    // ==================== Eé˜¶æ®µè½¬å‘é€»è¾‘ ====================
+    // 01 -> Mé˜¶æ®µè½¬å‘, 10 -> Wé˜¶æ®µè½¬å‘
+    assign forwordAE = ((rsE != 5'b0) & (rsE == writeregM) & regwriteM) ? 2'b01 :  // Mé˜¶æ®µè½¬å‘
+                       ((rsE != 5'b0) & (rsE == writeregW) & regwriteW) ? 2'b10 :  // Wé˜¶æ®µè½¬å‘
+                        2'b00;
+    assign forwordBE = ((rtE != 5'b0) & (rtE == writeregM) & regwriteM) ? 2'b01 :
+                       ((rtE != 5'b0) & (rtE == writeregW) & regwriteW) ? 2'b10 :
+                        2'b00;
+
+    // ==================== Dé˜¶æ®µè½¬å‘é€»è¾‘ ====================
+    // ç”¨äºåˆ†æ”¯åˆ¤æ–­å’Œè·³è½¬åœ°å€è®¡ç®—
+    // 10 -> Mé˜¶æ®µè½¬å‘, 01 -> Wé˜¶æ®µè½¬å‘
+    assign forwordAD = ((rsD != 5'b0) & (rsD == writeregM) & regwriteM) ? 2'b10 :  // Mé˜¶æ®µè½¬å‘
+                       ((rsD != 5'b0) & (rsD == writeregW) & regwriteW) ? 2'b01 :  // Wé˜¶æ®µè½¬å‘
+                       2'b00;
+    assign forwordBD = ((rtD != 5'b0) & (rtD == writeregM) & regwriteM) ? 2'b10 :
+                       ((rtD != 5'b0) & (rtD == writeregW) & regwriteW) ? 2'b01 :
+                       2'b00;
+
+    // ==================== Stallé€»è¾‘ ====================
+    wire lwstall, branch_stall, jump_stall, link_stall;
+    
+    // LW stallï¼šloadæŒ‡ä»¤åç´§è·Ÿä½¿ç”¨è¯¥æ•°æ®çš„æŒ‡ä»¤
+    assign lwstall = memtoregE & ((rsD == rtE) | (rtD == rtE)) & (rtE != 0);
+    
+    // åˆ†æ”¯stallï¼šåˆ†æ”¯æŒ‡ä»¤éœ€è¦çš„æ•°æ®è¿˜åœ¨Eé˜¶æ®µæˆ–Mé˜¶æ®µçš„loadæŒ‡ä»¤ä¸­
+    assign branch_stall = branchD & (
+        (regwriteE & ((writeregE == rsD) | (writeregE == rtD))) |
+        (memtoregM & ((writeregM == rsD) | (writeregM == rtD)))
     );
-//Êı¾İÇ°ÍÆ½â¾öRÖ¸ÁîºÍÇ°Á½ÌõlwÖ¸ÁîµÄÊı¾İÃ°ÏÕ
-    /*ALU¶Ë¿ÚSrcAEµÄÊı¾İ¿ÉÄÜÀ´×Ô£º£¨×¢ÒâÅĞ¶ÏreE!=0£¬·ñÔò¶Á±£Áô¼Ä´æÆ÷Ö±½ÓÊä³ö£©
-        ¼Ä´æÆ÷¶Ñ£¨ÎŞÃ°ÏÕÇé¿öÏÂ£©£ºforwordAE=00¡¢SrcAE=RsD
-        Êı¾İ´æ´¢Æ÷(lwµÄÊı¾İÃ°ÏÕ)£ºforwordAE=01¡¢SrcAE=ResultW£¨lwÖ¸ÁîĞ´»Ø¼Ä´æÆ÷¶ÑÔÚMEM½×¶Î£¬ÆäºóµÚ¶şÌõÖ¸ÁîÈçĞèÒª¸ÃÊı¾İ»áÊÜÓ°Ïì£©
-        ALUOut£¨ALUÔËËãµÄÊı¾İÃ°ÏÕ£©£ºforwordAE=10¡¢SrcAE=ALUOutM£¨RĞÍÖ¸ÁîĞ´»Ø¼Ä´æÆ÷¶ÑÔÚWB½×¶Î£¬ÆäºóÒ»ÌõÖ¸ÁîÈçĞèÒª¸ÃÊı¾İ¶¼»áÊÜÓ°Ïì£©
-    */
-    assign forwordAE = ((rsE != 5'b0) & (rsE == writeregM) & regwriteM) ? 2'b10:    //Ç°Ò»ÌõÖ¸ÁîÊÇRĞÍ£¬Ö±½Ó½«ALUOut´«»Ø
-                       ((rsE != 5'b0) & (rsE == writeregW) & regwriteW) ? 2'b01:    //Ç°Á½ÌõÖ¸ÁîÊÇlw
-                        2'b00;
-    assign forwordBE = ((rtE != 5'b0) & (rtE == writeregM) & regwriteM) ? 2'b10:    //SrcBEÍ¬SrcAE
-                       ((rtE != 5'b0) & (rtE == writeregW) & regwriteW) ? 2'b01:
-                        2'b00;
-//ÌáÇ°ÅĞ¶Ï·ÖÖ§½â¾öbeqºó2¡¢3ÌõÖ¸ÁîµÄ¿ØÖÆÃ°ÏÕÊ±³öÏÖµÄÊı¾İÃ°ÏÕ
-    assign forwordAD = ((rsD != 5'b0) & (rsD == writeregE) & regwriteE);            //Ç°Ò»ÌõÖ¸ÁîÒªĞ´»Ø¼Ä´æÆ÷¶ÑÇÒ¸ÃÊı¾İ±»beqÖ¸ÁîËùÓÃ
-    assign forwordBD = ((rtD != 5'b0) & (rtD == writeregE) & regwriteE);
-//Á÷Ë®ÏßÔİÍ£½â¾ölwºóÒ»ÌõÖ¸ÁîĞèÒªÓÃ¼Ä´æÆ÷¶ÑÊı¾İ´øÀ´µÄÊı¾İÃ°ÏÕ¡¢beqĞèÒªÓÃÇ°Ò»ÌõÖ¸ÁîĞ´»Ø¼Ä´æÆ÷¶ÑµÄÊı¾İ
-    /*lwÖ¸ÁîĞ´Èë¼Ä´æÆ÷¶ÑµÄµØÖ·Îªrt£¬Òò´ËÏÂÒ»ÌõÖ¸ÁîÈôÒªÓÃµ½rtÔòĞèÒªÔİÍ££¬¼´rsD==rtE»òrtD==rtE
-      beqÖ¸ÁîĞèÒªrs¡¢rtºÅ¼Ä´æÆ÷µÄÊı¾İ£¬ÈôÉÏÒ»ÌõÖ¸ÁîÒªĞ´µ½¸Ã¼Ä´æÆ÷£¬ÔòĞèÒªÔİÍ£Á÷Ë®Ïß
-    */
-    wire lwstall,branch_stall;                                      //Á÷Ë®ÏßÔİÍ£ĞÅºÅ
-    assign lwstall = (((rsD == rtE) | (rtD == rtE)) & memtoregE);   //ÅĞ¶ÏÇ°Ò»ÌõÖ¸ÁîĞèÒª¶Ô¼Ä´æÆ÷¶ÑĞ´Èë(memturegE)²¢ÇÒĞ´ÈëµØÖ·rtEÓë±»µ±Ç°Ö¸ÁîÓÃµ½
-    assign branch_stall=( branchD&regwriteE&((writeregE==rsD)|(writeregE==rtD)) )   //µ±Ç°Ö¸ÁîÎªbranch¡¢ÉÏÒ»ÌõÖ¸ÁîÒªĞ´¼Ä´æÆ÷¶ÑÇÒĞ´µÄÊı¾İµ±Ç°ÒªÓÃ
-                       |( branchD&memtoregM&((writeregM==rsD)|(writeregM==rtD)) );  //µ±Ç°Ö¸ÁîÎªbranch¡¢ÉÏ2ÌõÖ¸ÁîÒªĞ´¼Ä´æÆ÷¶ÑÇÒĞ´µÄÊı¾İµ±Ç°ÒªÓÃ
-    always @(*)begin
-        stallF = rst? 1'b0 : (lwstall | branch_stall);      //Èô±»ÖØÖÃÔòÈ«²¿ÇåÁã
-        stallD = rst? 1'b0 : (lwstall | branch_stall);      //lw´øÀ´µÄÊı¾İÃ°ÏÕ»òÌáÇ°ÅĞ¶Ï·ÖÖ§´øÀ´µÄÊı¾İÃ°ÏÕ¶¼¿ÉÒÔÔİÍ£Á÷Ë®Ïß
-        flushE = rst? 1'b0 : (lwstall | branch_stall);      //lw/beqÏÂÒ»ÌõÒÑ¾­Ö´ĞĞµÄĞèÒªÇå¿Õ
-    end
+    
+    // è·³è½¬stallï¼šJR/JALRçš„rsåœ¨Eé˜¶æ®µå†™å›æ—¶éœ€è¦stall
+    assign jump_stall = jump_conflictD;
+    
+    // Link stallï¼šå½“Eé˜¶æ®µæ˜¯LinkæŒ‡ä»¤ä¸”Dé˜¶æ®µæŒ‡ä»¤éœ€è¦è¯»å–Linkçš„ç›®æ ‡å¯„å­˜å™¨æ—¶é˜»å¡
+    assign link_stall = linkE & regwriteE & (
+        ((writeregE == rsD) & (rsD != 0)) | 
+        ((writeregE == rtD) & (rtD != 0))
+    );
+    
+    assign stallF = lwstall | branch_stall | jump_stall | link_stall;
+    assign stallD = lwstall | branch_stall | jump_stall | link_stall;
+    assign flushE = lwstall | branch_stall | jump_stall | link_stall;
 
 endmodule
-

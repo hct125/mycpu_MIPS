@@ -1,54 +1,142 @@
 `timescale 1ns / 1ps
-/*ControllerÄ£¿é£º½âÂë²¿·ÖÔ­ÀíÍ¬ÊµÑé¶ş£¬´Ë´¦Êä³ö¿ØÖÆĞÅºÅÊ±²»ÄÜÖ±½ÓÊä³ö8bit sigs£¬¶øÊÇµ¥¶ÀÊä³ö¡£
-    ±¾Ä£¿é²»½ö¸ºÔğ½âÂë£¬»¹ĞèÒª²Ù¿ØÃ¿Ò»¼¶Á÷Ë®ÏßºÍÁ÷Ë®Ïß¼Ä´æÆ÷Ö®¼äµÄÊı¾İ½ø³ö¡£ÏÂÎª¸÷ĞÅºÅÊä³öÎ»ÖÃ£º
-    jump¡¢branch£ºMain Decoderºó
-    alucontrol¡¢alusrc¡¢regdst¡¢regwriteE¡¢memtoregE£ºÁ÷Ë®Ïß¼Ä´æÆ÷DEºó
-    memwrite¡¢data_ram_ena¡¢memtoregM¡¢regwriteM£ºÁ÷Ë®¼Ä´æÆ÷EMºó
-    regwrite¡¢memtoreg£ºÁ÷Ë®¼Ä´æÆ÷MWºó
-    ÆäÖĞregwriteE,memtoregM,regwriteM,memtoregE¾ùÎª´«ÈëdatapathÖĞµÄhazardÄ£¿é£¬´¦ÀíÃ°ÏÕÇé¿ö
-*/
+// Controlleræ¨¡å— - æ”¯æŒ12æ¡è½¬ç§»æŒ‡ä»¤
+// æ§åˆ¶ä¿¡å·é€šè¿‡æµæ°´çº¿ä¼ é€’ï¼Œæ­£ç¡®å¤„ç† flushE å’Œ stallD
+
 module controller(
     input clka,rst,
     input wire [31:0] instr,
+    input wire stallD,      // Dé˜¶æ®µæš‚åœ
+    input wire flushE,      // Eé˜¶æ®µæ¸…ç©º
     output wire jump,branch,alusrc,memwrite,memetoreg,regwrite,regdst,data_ram_ena,regwriteE,memtoregM,
-    output wire regwriteM,  //regwriteE,memtoregM,regwriteM,memtoregE´«ÈëdatapathÖĞµÄhazardĞèÒª
+    output wire regwriteM,
     output wire memtoregE,
-    output wire [2:0] alucontrol
+    output wire [2:0] alucontrol,
+    // æ–°å¢ï¼šLinkå’ŒJumpç›¸å…³ä¿¡å·
+    output wire jalD,linkD,jrD,  // Dé˜¶æ®µ
+    output wire jalE,linkE,jrE,  // Eé˜¶æ®µ
+    output wire linkM,           // Mé˜¶æ®µ
+    output wire linkW            // Wé˜¶æ®µ
+);
+
+    // Dé˜¶æ®µä¿¡å·
+    wire [1:0] aluop;
+    wire [7:0] sigsD;
+    wire jalD_temp, linkD_temp, jrD_temp;
+    wire [2:0] alucontrolD;
+    
+    // main_dec å®ä¾‹åŒ–
+    main_dec Main_Decoder(
+        .op(instr[31:26]),
+        .rt(instr[20:16]),
+        .funct(instr[5:0]),
+        .sigs(sigsD),
+        .aluop(aluop),
+        .jal(jalD_temp),
+        .link(linkD_temp),
+        .jr(jrD_temp)
     );
-//¸ù¾İinstr[31:26]ºÍinstr[5:0]½âÂë
-    wire [1:0] aluop;       //Main DecodeÊä³öµÄaluopĞÅºÅ£¬´«ÈëALU Decoder
-    wire [7:0] sigsD;       //Main DecodeÊä³öµÄ8bit¿ØÖÆĞÅºÅ
-    //main_dec ÊµÀı»¯
-    main_dec Main_Decoder(.op(instr[31:26]),.sigs(sigsD),.aluop(aluop));
-    wire [2:0] alucontrolD; //ALU DecoderÊä³öµÄALU¿ØÖÆĞÅºÅ£¬´«ÈëÁ÷Ë®Ïß¼Ä´æÆ÷
-    //alu_dec ÊµÀı»¯
+    
+    assign jalD = jalD_temp;
+    assign linkD = linkD_temp;
+    assign jrD = jrD_temp;
+    
+    // alu_dec å®ä¾‹åŒ–
     alu_dec ALU_Control(.funct(instr[5:0]),.op(aluop),.alucontrol(alucontrolD));
-    assign jump = sigsD[7]; //jumpºÍbranchĞÅºÅ²»ÓÃ¼ÌĞø´«Êä£¬Ö±½Ó´«¸øÏÂÒ»ÌõÖ¸ÁîÒÔ¼õÉÙ¿ØÖÆÃ°ÏÕ
+    
+    // Dé˜¶æ®µç›´æ¥è¾“å‡º
+    assign jump = sigsD[7];
     assign branch = sigsD[3];
+
+    // ==================== D->E æµæ°´çº¿å¯„å­˜å™¨ï¼ˆè¡Œä¸ºçº§ï¼Œæ”¯æŒflushå’Œstallï¼‰====================
+    // sigsD: {jump[7], regwrite[6], regdst[5], alusrc[4], branch[3], memwrite[2], memtoreg[1], data_ram_ena[0]}
+    reg regwriteE_r, regdstE_r, alusrcE_r, memwriteE_r, memtoregE_r, data_ram_enaE_r;
+    reg [2:0] alucontrolE_r;
+    reg jalE_r, linkE_r, jrE_r;
     
-//Á÷Ë®Ïß¼Ä´æÆ÷DE¼äµÄÊı¾İ½ø³ö£º{regwrite,regdst,alusrc,memwrite,memetoreg,data_ram_ena}ºÍALUControlD
-    wire [5:0] sigsE;       //{regwrite,regdst,alusrc,memwrite,memetoreg,data_ram_ena}
-    wire [2:0] alucontrolE; //´ÓÁ÷Ë®Ïß¼Ä´æÆ÷DE¶Á³öµÄALU¿ØÖÆĞÅºÅ
-    floprc #(6) r1E(.clk(clka),.rst(rst),.clear(1'b0),.d({sigsD[6:4],sigsD[2:0]}),.q(sigsE));
-    floprc #(3) r2E(.clk(clka),.rst(rst),.clear(1'b0),.d(alucontrolD),.q(alucontrolE));
-    assign regdst = sigsE[4];
-    assign alusrc = sigsE[3];
-    assign alucontrol = alucontrolE;
-    assign memtoregE = sigsE[1];
-    assign regwriteE = sigsE[5];
+    always @(posedge clka) begin
+        if (rst | flushE) begin
+            // å¤ä½æˆ–flushæ—¶æ¸…é›¶
+            regwriteE_r <= 0;
+            regdstE_r <= 0;
+            alusrcE_r <= 0;
+            memwriteE_r <= 0;
+            memtoregE_r <= 0;
+            data_ram_enaE_r <= 0;
+            alucontrolE_r <= 0;
+            jalE_r <= 0;
+            linkE_r <= 0;
+            jrE_r <= 0;
+        end else if (~stallD) begin
+            // æ²¡æœ‰stallæ—¶æ›´æ–°
+            regwriteE_r <= sigsD[6];
+            regdstE_r <= sigsD[5];
+            alusrcE_r <= sigsD[4];
+            memwriteE_r <= sigsD[2];
+            memtoregE_r <= sigsD[1];
+            data_ram_enaE_r <= sigsD[0];
+            alucontrolE_r <= alucontrolD;
+            jalE_r <= jalD;
+            linkE_r <= linkD;
+            jrE_r <= jrD;
+        end
+        // stallæ—¶ä¿æŒä¸å˜
+    end
     
-//Á÷Ë®Ïß¼Ä´æÆ÷EM¼äµÄÊı¾İ½ø³ö£º{regwrite,memwrite,memetoreg,data_ram_ena}
-    wire [3:0] sigsM;
-    floprc #(4) r1M(.clk(clka),.rst(rst),.clear(1'b0),.d({sigsE[5],sigsE[2:0]}),.q(sigsM));
-    assign memwrite = sigsM[2];
-    assign data_ram_ena = sigsM[0];
-    assign regwriteM = sigsM[3];  //´«ÈëdatapathÖĞµÄhazardĞèÒª
-    assign memtoregM = sigsM[1]; //´«ÈëdatapathÖĞµÄhazardĞèÒª
+    assign regwriteE = regwriteE_r;
+    assign regdst = regdstE_r;
+    assign alusrc = alusrcE_r;
+    assign memtoregE = memtoregE_r;
+    assign alucontrol = alucontrolE_r;
+    assign jalE = jalE_r;
+    assign linkE = linkE_r;
+    assign jrE = jrE_r;
     
-//Á÷Ë®Ïß¼Ä´æÆ÷MW¼äµÄÊı¾İ½ø³ö£º{regwrite,memwrite,memetoreg}
-    wire [1:0] sigsW;
-    floprc #(2) r1W(.clk(clka),.rst(rst),.clear(1'b0),.d({sigsM[3],sigsM[1]}),.q(sigsW));
-    assign regwrite = sigsW[1];
-    assign memetoreg = sigsW[0];
+    // Eé˜¶æ®µå†…éƒ¨ä¿¡å·
+    wire memwriteE_internal = memwriteE_r;
+    wire data_ram_enaE_internal = data_ram_enaE_r;
+
+    // ==================== E->M æµæ°´çº¿å¯„å­˜å™¨ ====================
+    reg regwriteM_r, memwriteM_r, memtoregM_r, data_ram_enaM_r, linkM_r;
+    
+    always @(posedge clka) begin
+        if (rst) begin
+            regwriteM_r <= 0;
+            memwriteM_r <= 0;
+            memtoregM_r <= 0;
+            data_ram_enaM_r <= 0;
+            linkM_r <= 0;
+        end else begin
+            regwriteM_r <= regwriteE_r;
+            memwriteM_r <= memwriteE_r;
+            memtoregM_r <= memtoregE_r;
+            data_ram_enaM_r <= data_ram_enaE_r;
+            linkM_r <= linkE_r;
+        end
+    end
+    
+    assign regwriteM = regwriteM_r;
+    assign memwrite = memwriteM_r;
+    assign memtoregM = memtoregM_r;
+    assign data_ram_ena = data_ram_enaM_r;
+    assign linkM = linkM_r;
+
+    // ==================== M->W æµæ°´çº¿å¯„å­˜å™¨ ====================
+    reg regwriteW_r, memtoregW_r, linkW_r;
+    
+    always @(posedge clka) begin
+        if (rst) begin
+            regwriteW_r <= 0;
+            memtoregW_r <= 0;
+            linkW_r <= 0;
+        end else begin
+            regwriteW_r <= regwriteM_r;
+            memtoregW_r <= memtoregM_r;
+            linkW_r <= linkM_r;
+        end
+    end
+    
+    assign regwrite = regwriteW_r;
+    assign memetoreg = memtoregW_r;
+    assign linkW = linkW_r;
 
 endmodule

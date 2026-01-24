@@ -1,38 +1,91 @@
 `timescale 1ns / 1ps
+// MIPS CPUé¡¶å±‚æ¨¡å— - æ”¯æŒ12æ¡è½¬ç§»æŒ‡ä»¤
 
 module mips(
-	input wire clk,
+    input wire clk,
     input wire rst,
     input wire [31:0] mem_rdata,
-	input wire [31:0] instr,	
-	output wire [31:0] mem_wdata,
+    input wire [31:0] instr,	
+    output wire [31:0] mem_wdata,
     output wire [31:0] pc,
     output wire inst_ram_ena,
-    output wire data_ram_ena,  //DataramµÄ¶ÁĞÅºÅ
-    output wire data_ram_wea,  //Ô­±¾data_ramµÄweaÊÇ4Î»£¬µ«controllerÖĞ·¢³öµÄÖ¸ÁîÊÇ1Î»µÄ£¬¹Ê´Ë´¦ÉèÖÃÎª1Î»
-    output wire [31:0] alu_result    
+    output wire data_ram_ena,
+    output wire data_ram_wea,
+    output wire [31:0] alu_result,
+    // å…¼å®¹æ—§æ¥å£ï¼ˆç”¨äºmycpu_top.vï¼‰
+    output wire memwrite,
+    output wire [31:0] aluout,
+    output wire [31:0] writedata,
+    output wire [31:0] readdata
+);
+	
+    wire memtoreg,alusrc,regdst,regwrite,jump,regwriteM,memtoregE,regwriteE,memtoregM,branch;
+    wire[2:0] alucontrol;
+    wire [31:0] instrD;
+    // æ–°å¢ï¼šLinkå’ŒJumpç›¸å…³ä¿¡å·
+    wire jalD,linkD,jrD,jalE,linkE,jrE,linkM,linkW;
+    // æ–°å¢ï¼šstallå’Œflushä¿¡å·
+    wire stallD, flushE;
+    
+    assign inst_ram_ena = 1'b1;
+	
+    // å…¼å®¹èµ‹å€¼
+    assign memwrite = data_ram_wea;
+    assign aluout = alu_result;
+    assign writedata = mem_wdata;
+    assign readdata = mem_rdata;
+	
+    // mips = datapath + controller
+    controller c(
+        .clka(clk),
+        .rst(rst),
+        .instr(instrD),
+        .stallD(stallD),        // è¿æ¥stallä¿¡å·
+        .flushE(flushE),        // è¿æ¥flushä¿¡å·
+        .jump(jump),
+        .branch(branch),
+        .alusrc(alusrc),
+        .memwrite(data_ram_wea),
+        .memetoreg(memtoreg),
+        .regwrite(regwrite),
+        .regdst(regdst),
+        .data_ram_ena(data_ram_ena),
+        .regwriteM(regwriteM),
+        .memtoregE(memtoregE),
+        .regwriteE(regwriteE),
+        .memtoregM(memtoregM),
+        .alucontrol(alucontrol),
+        .jalD(jalD),.linkD(linkD),.jrD(jrD),
+        .jalE(jalE),.linkE(linkE),.jrE(jrE),
+        .linkM(linkM),.linkW(linkW)
+    );
+    
+    datapath dp(
+        .clka(clk),
+        .rst(rst),
+        .instr(instr),
+        .mem_rdata(mem_rdata),
+        .pc(pc),
+        .writedataM(mem_wdata),
+        .alu_resultM(alu_result),
+        .memtoreg(memtoreg),
+        .alusrc(alusrc),
+        .regdst(regdst),
+        .regwrite(regwrite),
+        .jump(jump),
+        .branch(branch),
+        .regwriteM(regwriteM),
+        .memtoregE(memtoregE),
+        .regwriteE(regwriteE),
+        .memtoregM(memtoregM),
+        .alucontrol(alucontrol),
+        .instrD_to_controller(instrD),
+        .jalD(jalD),.linkD(linkD),.jrD(jrD),
+        .jalE(jalE),.linkE(linkE),.jrE(jrE),
+        .linkM(linkM),.linkW(linkW),
+        // è¾“å‡ºstallå’Œflushä¿¡å·ç»™controller
+        .stallD_out(stallD),
+        .flushE_out(flushE)
     );
 	
-	wire memtoreg,alusrc,regdst,regwrite,jump,regwriteM,memtoregE,regwriteE,memtoregM,branch;
-	wire[2:0] alucontrol;
-	wire [31:0] instrD;
-	assign inst_ram_ena = 1'b1;    //ÓÉÓÚcpuÒ»Ö±ÊÇÔÚ¶ÁÖ¸ÁîµÄ£¬ËùÒÔinstr--ram--enaºãÎª1
-	//mips = datapath + controller
-	controller c(.clka(clk),.rst(rst),.instr(instrD),.jump(jump),.branch(branch),.alusrc(alusrc),
-		.memwrite(data_ram_wea),.memetoreg(memtoreg),.regwrite(regwrite),.regdst(regdst),
-		.data_ram_ena(data_ram_ena),
-    	.regwriteM(regwriteM),    //´«ÈëdatapathÖĞµÄhazard
-		.memtoregE(memtoregE),    //´«ÈëdatapathÖĞµÄhazard
-		.regwriteE(regwriteE),    //´«ÈëdatapathÖĞµÄhazard
-		.memtoregM(memtoregM),    //´«ÈëdatapathÖĞµÄhazard
-		.alucontrol(alucontrol)
-	);
-	datapath dp(.clka(clk),.rst(rst),.instr(instr),.mem_rdata(mem_rdata),.pc(pc),.writedataM(mem_wdata),
-		.alu_resultM(alu_result),.memtoreg(memtoreg),.alusrc(alusrc),.regdst(regdst),
-		.regwrite(regwrite),.jump(jump),.branch(branch),.regwriteM(regwriteM),.memtoregE(memtoregE),
-		.regwriteE(regwriteE),.memtoregM(memtoregM),.alucontrol(alucontrol),.instrD_to_controller(instrD)
-	);
-	
 endmodule
-
-
