@@ -4,6 +4,7 @@ module tb_top();
 
 reg clk, resetn;
 reg [31:0] alu_resultM;
+reg [31:0] count;
 
 initial begin
 $dumpfile("wave.vcd"); // 指定波形文件为dump.vcd
@@ -14,18 +15,22 @@ initial
 begin
     clk = 1'b0;
     resetn = 1'b0;
+    count=32'b0;
     #100;
     resetn = 1'b1;
 
-    #550;
+    #3000;
     $finish;
 end
 always #5 clk=~clk;
 
 always@(posedge clk)
 begin
-    if (resetn)
-        $display("alu_resultM=%h",alu_resultM);
+    if (resetn) begin
+        count <= count + 1;
+        if (count<=50)
+            $display("alu_resultM=%h",alu_resultM);
+    end
 end
 
 top soc(

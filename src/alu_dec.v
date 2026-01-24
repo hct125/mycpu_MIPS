@@ -23,6 +23,8 @@ always @(*) begin
                     `OR: alucontrol <= `OR_CONTROL;
                     `MULT: alucontrol <= `MULT_CONTROL;
                     `MULTU: alucontrol <= `MULTU_CONTROL;
+                    `DIV: alucontrol <= `DIV_CONTROL;
+                    `DIVU: alucontrol <= `DIVU_CONTROL;
                     default: alucontrol <= 5'b00000;
                 endcase
         end

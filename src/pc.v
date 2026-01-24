@@ -5,11 +5,11 @@ module pc(
     input wire [31:0] din,
     output reg [31:0] q
     );
-    always @(negedge clk) begin
+    always @(posedge clk) begin
         if(rst) q<=32'b0;
         else begin
-            if(en != 1) q<=32'b0;
-            else q<=din;
+            if(en) q<=din;
+            else q<=q;
         end
     end
 endmodule

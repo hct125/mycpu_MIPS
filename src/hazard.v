@@ -17,13 +17,16 @@ module hazard(
     input wire [4:0] writeregE, //寄存器堆的写地址，连接wa3W
     input wire [4:0] writeregM,
     input wire [4:0] writeregW,
+    input wire stall_divE,
     output [1:0] forwordAE,     //在excute阶段控制mux3选择SrcA（数据冒险）
     output [1:0] forwordBE,     //在excute阶段控制mux3选择SrcB
     output forwordAD,     //在decode阶段控制二选一选择regfile rd1出来的数据（控制冒险下的数据冒险）
     output forwordBD,     //在decode阶段控制二选一选择regfile rd2出来的数据
     output reg stallF,          //instr fetch级暂停
     output reg stallD,          //decoder暂停
-    output reg flushE           //excute读到的流水线需要清空
+    output reg stallE,
+    output reg flushE,          //excute刷新（即插入气泡）
+    output reg flushM
     );
 //数据前推解决R指令和前两条lw指令的数据冒险
     /*ALU端口SrcAE的数据可能来自：（注意判断reE!=0，否则读保留寄存器直接输出）
@@ -49,9 +52,11 @@ module hazard(
     assign branch_stall=( branchD&regwriteE&((writeregE==rsD)|(writeregE==rtD)) )   //当前指令为branch、上一条指令要写寄存器堆且写的数据当前要用
                        |( branchD&memtoregM&((writeregM==rsD)|(writeregM==rtD)) );  //当前指令为branch、上2条指令要写寄存器堆且写的数据当前要用
     always @(*)begin
-        stallF = rst? 1'b0 : (lwstall | branch_stall);      //若被重置则全部清零
-        stallD = rst? 1'b0 : (lwstall | branch_stall);      //lw带来的数据冒险或提前判断分支带来的数据冒险都可以暂停流水线
+        stallF = rst? 1'b0 : (lwstall | branch_stall | stall_divE);      //若被重置则全部清零
+        stallD = rst? 1'b0 : (lwstall | branch_stall | stall_divE);      //lw带来的数据冒险或提前判断分支带来的数据冒险都可以暂停流水线
+        stallE = rst? 1'b0 : stall_divE;
         flushE = rst? 1'b0 : (lwstall | branch_stall);      //lw/beq下一条已经执行的需要清空
+        flushM = rst? 1'b0 : stall_divE;
     end
 
 endmodule

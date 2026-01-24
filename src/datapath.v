@@ -19,7 +19,9 @@ module datapath(
     input wire memtoregM,
     input wire sext,
 	input wire [4:0] alucontrol,
-    output wire [31:0] instrD_to_controller//从datapath中传出，由于instr必须为D阶段的才能使controller与其匹配。同时instrD受harzard控制，必须从datapath中传出。
+    output wire [31:0] instrD_to_controller,//从datapath中传出，由于instr必须为D阶段的才能使controller与其匹配。同时instrD受harzard控制，必须从datapath中传出。
+    output wire stallE,  //除法器忙信号传出到controller
+    output wire flushM
     );
     wire [31:0] pc_next;        //pc+4后的下一位pc
     wire [31:0] pc_next_jump;   //选择pc+4?branch后，再次选择是否jump后的PC值
@@ -88,14 +90,15 @@ module datapath(
         );
     //判断在branch指令时是否要清空pc（流水线延迟导致branch下一条指令执行）
     wire pc_en;
-    assign pc_en = ~(stallF & pcsrc);
+    // stallF 为真，PC 就应该停止自增。
+    assign pc_en = ~stallF; 
     //PC
-    pc pc_module(.clk(clka),.rst(rst),.en(1'b1),.din(pc_next_jump),.q(pc));
+    pc pc_module(.clk(clka),.rst(rst),.en(pc_en),.din(pc_next_jump),.q(pc));
     //PC+4
     adder pc_plus_4_module(.a(pc),.b(32'h4),.y(pc_plus_4));
-//流水线寄存器控制信号
+    //流水线寄存器控制信号
     wire F_D_en;
-    assign F_D_en = ~(stallD & pcsrc);
+    assign F_D_en = ~stallD;
     //F-D数据传输
     flopenrc #(32) r1D(.clk(clka),.rst(rst),.en(F_D_en),.clear(1'b0),.d(instr),.q(instrD));
     flopenrc #(32) r2D(.clk(clka),.rst(rst),.en(F_D_en),.clear(1'b0),.d(pc_plus_4),.q(pc_plus_4D));
@@ -139,14 +142,17 @@ module datapath(
     
     wire [4:0] saE;
     //D-E数据传输
-    flopenrc #(32) r1E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(rd1D),.q(rd1E));
-    flopenrc #(32) r2E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(rd2D),.q(rd2E));
-    flopenrc #(5) r3E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(instrD[20:16]),.q(rtE));
-    flopenrc #(5) r4E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(instrD[15:11]),.q(rdE));
-    flopenrc #(32) r5E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(pc_plus_4D),.q(pc_plus_4E));
-    flopenrc #(32) r6E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(imm_extend),.q(imm_extendE));
-    flopenrc #(5) r7E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(instrD[25:21]),.q(rsE));
-    flopenrc #(5) r8E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(instrD[10:6]),.q(saE));
+    // We need to use stallE to stop updating pipeline registers when DIV is busy
+    wire E_en = ~stallE;
+    
+    flopenrc #(32) r1E(.clk(clka),.rst(rst),.en(E_en),.clear(D_E_en),.d(rd1D),.q(rd1E));
+    flopenrc #(32) r2E(.clk(clka),.rst(rst),.en(E_en),.clear(D_E_en),.d(rd2D),.q(rd2E));
+    flopenrc #(5) r3E(.clk(clka),.rst(rst),.en(E_en),.clear(D_E_en),.d(instrD[20:16]),.q(rtE));
+    flopenrc #(5) r4E(.clk(clka),.rst(rst),.en(E_en),.clear(D_E_en),.d(instrD[15:11]),.q(rdE));
+    flopenrc #(32) r5E(.clk(clka),.rst(rst),.en(E_en),.clear(D_E_en),.d(pc_plus_4D),.q(pc_plus_4E));
+    flopenrc #(32) r6E(.clk(clka),.rst(rst),.en(E_en),.clear(D_E_en),.d(imm_extend),.q(imm_extendE));
+    flopenrc #(5) r7E(.clk(clka),.rst(rst),.en(E_en),.clear(D_E_en),.d(instrD[25:21]),.q(rsE));
+    flopenrc #(5) r8E(.clk(clka),.rst(rst),.en(E_en),.clear(D_E_en),.d(instrD[10:6]),.q(saE));
     
     //连接regfile的wa3,选择写入结果的地址是rt（lw）还是rd（r-type）
     mux2 #(5) mux_wa3(
@@ -163,19 +169,90 @@ module datapath(
     //alu_srcB
     mux2 #(32) mux_alu_srcb(.a(imm_extendE),.b(mux3_B_result),.s(alusrc),.y(alu_srcB));
 
-    reg overflow_reg;  //溢出标志
-    reg [31:0]HI_reg,LO_reg;       //乘除法结果寄存器
+    wire overflow_wire;  //溢出标志,暂时未使用
+    
     //ALU
-    alu alu(.a(mux3_A_result),.b(alu_srcB),.sa(saE),.op(alucontrol),.result(alu_result),.hi(HI_reg),.overflow(overflow_reg),.zero(zero));
-    //HI_LO寄存器
-    assign LO_reg = alu_result;
+    alu alu(
+        .a(mux3_A_result),
+        .b(alu_srcB),
+        .sa(saE),
+        .op(alucontrol),
+        .result(alu_result),
+        .overflow(overflow_wire),
+        .zero(zero)
+    );
+
+    // MUL Module (Multiplication)
+    wire [63:0] mul_result;
+    
+    mul u_mul(
+        .a(mux3_A_result),
+        .b(mux3_B_result),
+        .op(alucontrol),
+        .result(mul_result)
+    );
+
+    //除法模块
+    wire [63:0] div_result;
+    wire div_ready;
+    wire start_div = (alucontrol == `DIV_CONTROL) || (alucontrol == `DIVU_CONTROL);
+    wire signed_div = (alucontrol == `DIV_CONTROL);
+
+    // 实例化 div 模块
+    div u_div(
+        .clk(clka),
+        .rst(rst),
+        .signed_div_i(signed_div),
+        .opdata1_i(mux3_A_result),
+        .opdata2_i(mux3_B_result),
+        .start_i(start_div),
+        .annul_i(1'b0),
+        .result_o(div_result),
+        .ready_o(div_ready)
+    );
+    /*     div_radix2 u_div(
+        .clk(clka),
+        .rst(rst),
+        .flush(flushE), // 使用 flushE 作为清空信号
+        .a(mux3_A_result),
+        .b(mux3_B_result),
+        .valid(start_div),
+        .sign(signed_div),
+        .ready(div_ready),
+        .result(div_result)
+    ); */
+    
+    // 如果 div 收到开始信号，且尚未准备好 (ready 为低)，则暂停流水线
+    assign stall_divE = start_div & ~div_ready;
+
+    // HI/LO 寄存器
+    reg [31:0] hi, lo;
+    
+    // 当除法完成(div_ready) 或 乘法完成(使用独立的mul模块) 或 执行MTHI/MTLO时，更新HI/LO。
+    // 注意，乘法逻辑是组合逻辑，结果立即可用。除法是多周期的。
+    
+    always @(posedge clka) begin
+        if (rst) begin
+            hi <= 0;
+            lo <= 0;
+        end else if (div_ready) begin
+            hi <= div_result[63:32];
+            lo <= div_result[31:0];
+        end else if ((alucontrol == `MULT_CONTROL) || (alucontrol == `MULTU_CONTROL)) begin
+            hi <= mul_result[63:32];
+            lo <= mul_result[31:0];
+        end
+    end
+
+    // 
 
     //E-M数据传输
-    flopenrc #(32) r1M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(alu_result),.q(alu_resultM));
-    flopenrc #(1) r2M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(zero),.q(zeroM));
-    flopenrc #(32) r3M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(mux3_B_result),.q(writedataM));
-    flopenrc #(32) r4M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(pc_branch),.q(pc_branchM));
-    flopenrc #(5) r5M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(wa3),.q(wa3M));
+    // 使用 flushM 清空流水线寄存器 (插入气泡)
+    flopenrc #(32) r1M(.clk(clka),.rst(rst),.en(1'b1),.clear(flushM),.d(alu_result),.q(alu_resultM));
+    flopenrc #(1) r2M(.clk(clka),.rst(rst),.en(1'b1),.clear(flushM),.d(zero),.q(zeroM));
+    flopenrc #(32) r3M(.clk(clka),.rst(rst),.en(1'b1),.clear(flushM),.d(mux3_B_result),.q(writedataM));
+    flopenrc #(32) r4M(.clk(clka),.rst(rst),.en(1'b1),.clear(flushM),.d(pc_branch),.q(pc_branchM)); 
+    flopenrc #(5) r5M(.clk(clka),.rst(rst),.en(1'b1),.clear(flushM),.d(wa3),.q(wa3M));
     
     //M-W数据传输
     flopenrc #(32) r1W(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(alu_resultM),.q(alu_resultW));
@@ -189,7 +266,7 @@ module datapath(
         .regwriteE(regwriteE),.regwriteM(regwriteM),.regwriteW(regwrite),.memtoregE(memtoregE), 
         .memtoregM(memtoregM),.branchD(branch),.writeregE(wa3),.writeregM(wa3M),.writeregW(wa3W),
         .forwordAE(forwordAE),.forwordBE(forwordBE),.forwordAD(forwordAD),.forwordBD(forwordBD),
-        .stallF(stallF),.stallD(stallD),.flushE(flushE));
+        .stallF(stallF),.stallD(stallD),.flushE(flushE),.stall_divE(stall_divE),.stallE(stallE),.flushM(flushM));
 
 endmodule
 
