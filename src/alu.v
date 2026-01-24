@@ -1,13 +1,13 @@
 `timescale 1ns / 1ps
-//ALUÄ£¿é
+//ALUæ¨¡å—
 `include "defines2.vh"
 module alu(
-    input [31:0] a, //A¶Ë¿Ú
-    input [31:0] b, //B¶Ë¿Ú
-    input [4:0] sa, //ÒÆÎ»Á¿
-    input [4:0] op, //ÔËËã·û¿ØÖÆÂë
-    output reg [31:0] result,  //½á¹û
-    output reg overflow, //Òç³ö±êÖ¾
+    input [31:0] a, //Aç«¯å£
+    input [31:0] b, //Bç«¯å£
+    input [4:0] sa, //ç§»ä½é‡
+    input [4:0] op, //è¿ç®—ç¬¦æ§åˆ¶ç 
+    output reg [31:0] result,  //ç»“æœ
+    output reg overflow, //æº¢å‡ºæ ‡å¿—
     output wire zero
     );
 

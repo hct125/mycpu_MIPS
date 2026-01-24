@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-//º¬ÓĞrstºÍclear¹¦ÄÜµÄÁ÷Ë®Ïß¼Ä´æÆ÷
+//å«æœ‰rstå’ŒclearåŠŸèƒ½çš„æµæ°´çº¿å¯„å­˜å™¨
 module floprc #(parameter WIDTH = 8)(
 	input wire clk,rst,clear,
 	input wire[WIDTH-1:0] d,

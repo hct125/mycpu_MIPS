@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-//PCÄ£¿é£¬ÏÂ½µÑØ´¥·¢
+//PCå¯„å­˜å™¨
 module pc(
     input wire clk,rst,en,
     input wire [31:0] din,

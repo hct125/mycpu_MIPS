@@ -8,8 +8,8 @@ module mips(
 	output wire [31:0] mem_wdata,
     output wire [31:0] pc,
     output wire inst_ram_ena,
-    output wire data_ram_ena,  //DataramµÄ¶ÁĞÅºÅ
-    output wire data_ram_wea,  //Ô­±¾data_ramµÄweaÊÇ4Î»£¬µ«controllerÖĞ·¢³öµÄÖ¸ÁîÊÇ1Î»µÄ£¬¹Ê´Ë´¦ÉèÖÃÎª1Î»
+    output wire data_ram_ena,  //Dataramçš„è¯»ä¿¡å·
+    output wire data_ram_wea,  //åŸæœ¬data_ramçš„weaæ˜¯4ä½ï¼Œä½†controllerä¸­å‘å‡ºçš„æŒ‡ä»¤æ˜¯1ä½çš„ï¼Œæ•…æ­¤å¤„è®¾ç½®ä¸º1ä½
     output wire [31:0] alu_result    
     );
 	
@@ -19,15 +19,15 @@ module mips(
 	wire stallE; // Added wire
 	wire flushM; // Added wire
 	
-	assign inst_ram_ena = ~rst;    //ÓÉÓÚcpuÒ»Ö±ÊÇÔÚ¶ÁÖ¸ÁîµÄ£¬ËùÒÔinstr--ram--enaºãÎª1,resetÆÚ¼äÎª0
+	assign inst_ram_ena = ~rst;    //ç”±äºcpuä¸€ç›´æ˜¯åœ¨è¯»æŒ‡ä»¤çš„ï¼Œæ‰€ä»¥instr--ram--enaæ’ä¸º1,resetæœŸé—´ä¸º0
 	//mips = datapath + controller
 	controller c(.clka(clk),.rst(rst),.instr(instrD),.jump(jump),.branch(branch),.alusrc(alusrc),
 		.memwrite(data_ram_wea),.memetoreg(memtoreg),.regwrite(regwrite),.regdst(regdst),
 		.data_ram_ena(data_ram_ena),
-    	.regwriteM(regwriteM),    //´«ÈëdatapathÖĞµÄhazard
-		.memtoregE(memtoregE),    //´«ÈëdatapathÖĞµÄhazard
-		.regwriteE(regwriteE),    //´«ÈëdatapathÖĞµÄhazard
-		.memtoregM(memtoregM),    //´«ÈëdatapathÖĞµÄhazard
+    	.regwriteM(regwriteM),    //ä¼ å…¥datapathä¸­çš„hazard
+		.memtoregE(memtoregE),    //ä¼ å…¥datapathä¸­çš„hazard
+		.regwriteE(regwriteE),    //ä¼ å…¥datapathä¸­çš„hazard
+		.memtoregM(memtoregM),    //ä¼ å…¥datapathä¸­çš„hazard
         .sext(sext),
 		.alucontrol(alucontrol),
 		.stallE(stallE),

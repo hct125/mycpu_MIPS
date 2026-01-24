@@ -1,51 +1,51 @@
 `timescale 1ns / 1ps
-/*ControllerÄ£¿é£º½âÂë²¿·ÖÔ­ÀíÍ¬ÊµÑé¶ş£¬´Ë´¦Êä³ö¿ØÖÆĞÅºÅÊ±²»ÄÜÖ±½ÓÊä³ö8bit sigs£¬¶øÊÇµ¥¶ÀÊä³ö¡£
-    ±¾Ä£¿é²»½ö¸ºÔğ½âÂë£¬»¹ĞèÒª²Ù¿ØÃ¿Ò»¼¶Á÷Ë®ÏßºÍÁ÷Ë®Ïß¼Ä´æÆ÷Ö®¼äµÄÊı¾İ½ø³ö¡£ÏÂÎª¸÷ĞÅºÅÊä³öÎ»ÖÃ£º
-    jump¡¢branch£ºMain Decoderºó
-    alucontrol¡¢alusrc¡¢regdst¡¢regwriteE¡¢memtoregE£ºÁ÷Ë®Ïß¼Ä´æÆ÷DEºó
-    memwrite¡¢data_ram_ena¡¢memtoregM¡¢regwriteM£ºÁ÷Ë®¼Ä´æÆ÷EMºó
-    regwrite¡¢memtoreg£ºÁ÷Ë®¼Ä´æÆ÷MWºó
-    ÆäÖĞregwriteE,memtoregM,regwriteM,memtoregE¾ùÎª´«ÈëdatapathÖĞµÄhazardÄ£¿é£¬´¦ÀíÃ°ÏÕÇé¿ö
+/*Controlleræ¨¡å—ï¼šè§£ç éƒ¨åˆ†åŸç†åŒå®éªŒäºŒï¼Œæ­¤å¤„è¾“å‡ºæ§åˆ¶ä¿¡å·æ—¶ä¸èƒ½ç›´æ¥è¾“å‡º8bit sigsï¼Œè€Œæ˜¯å•ç‹¬è¾“å‡ºã€‚
+    æœ¬æ¨¡å—ä¸ä»…è´Ÿè´£è§£ç ï¼Œè¿˜éœ€è¦æ“æ§æ¯ä¸€çº§æµæ°´çº¿å’Œæµæ°´çº¿å¯„å­˜å™¨ä¹‹é—´çš„æ•°æ®è¿›å‡ºã€‚ä¸‹ä¸ºå„ä¿¡å·è¾“å‡ºä½ç½®ï¼š
+    jumpã€branchï¼šMain Decoderå
+    alucontrolã€alusrcã€regdstã€regwriteEã€memtoregEï¼šæµæ°´çº¿å¯„å­˜å™¨DEå
+    memwriteã€data_ram_enaã€memtoregMã€regwriteMï¼šæµæ°´å¯„å­˜å™¨EMå
+    regwriteã€memtoregï¼šæµæ°´å¯„å­˜å™¨MWå
+    å…¶ä¸­regwriteE,memtoregM,regwriteM,memtoregEå‡ä¸ºä¼ å…¥datapathä¸­çš„hazardæ¨¡å—ï¼Œå¤„ç†å†’é™©æƒ…å†µ
 */
 module controller(
     input clka,rst,
     input wire [31:0] instr,
     output wire jump,branch,alusrc,memwrite,memetoreg,regwrite,regdst,data_ram_ena,regwriteE,memtoregM,
-    output wire regwriteM,  //regwriteE,memtoregM,regwriteM,memtoregE´«ÈëdatapathÖĞµÄhazardĞèÒª
+    output wire regwriteM,  //regwriteE,memtoregM,regwriteM,memtoregEä¼ å…¥datapathä¸­çš„hazardéœ€è¦
     output wire memtoregE,
     output wire sext,
     output wire [4:0] alucontrol,
     input wire stallE,
     input wire flushM
     );
-//¸ù¾İinstr[31:26]ºÍinstr[5:0]½âÂë
-    wire [3:0] aluop;       //Main DecodeÊä³öµÄaluopĞÅºÅ£¬´«ÈëALU Decoder
-    wire [8:0] sigsD;       //Main DecodeÊä³öµÄ9bit¿ØÖÆĞÅºÅ
-    //main_dec ÊµÀı»¯
+//æ ¹æ®instr[31:26]å’Œinstr[5:0]è§£ç 
+    wire [3:0] aluop;       //Main Decodeè¾“å‡ºçš„aluopä¿¡å·ï¼Œä¼ å…¥ALU Decoder
+    wire [8:0] sigsD;       //Main Decodeè¾“å‡ºçš„9bitæ§åˆ¶ä¿¡å·
+    //main_dec å®ä¾‹åŒ–
     main_dec Main_Decoder(.op(instr[31:26]),.sigs(sigsD),.aluop(aluop));
-    wire [4:0] alucontrolD; //ALU DecoderÊä³öµÄALU¿ØÖÆĞÅºÅ£¬´«ÈëÁ÷Ë®Ïß¼Ä´æÆ÷
-    //alu_dec ÊµÀı»¯
+    wire [4:0] alucontrolD; //ALU Decoderè¾“å‡ºçš„ALUæ§åˆ¶ä¿¡å·ï¼Œä¼ å…¥æµæ°´çº¿å¯„å­˜å™¨
+    //alu_dec å®ä¾‹åŒ–
     alu_dec ALU_Control(.funct(instr[5:0]),.op(aluop),.alucontrol(alucontrolD));
-    assign jump = sigsD[8]; //jumpºÍbranchĞÅºÅ²»ÓÃ¼ÌĞø´«Êä£¬Ö±½Ó´«¸øÏÂÒ»ÌõÖ¸ÁîÒÔ¼õÉÙ¿ØÖÆÃ°ÏÕ
+    assign jump = sigsD[8]; //jumpå’Œbranchä¿¡å·ä¸ç”¨ç»§ç»­ä¼ è¾“ï¼Œç›´æ¥ä¼ ç»™ä¸‹ä¸€æ¡æŒ‡ä»¤ä»¥å‡å°‘æ§åˆ¶å†’é™©
     assign branch = sigsD[4];
     assign sext = sigsD[0];
     
-//Á÷Ë®Ïß¼Ä´æÆ÷DE¼äµÄÊı¾İ½ø³ö£º{regwrite,regdst,alusrc,memwrite,memetoreg,data_ram_ena}ºÍALUControlD
+//æµæ°´çº¿å¯„å­˜å™¨DEé—´çš„æ•°æ®è¿›å‡ºï¼š{regwrite,regdst,alusrc,memwrite,memetoreg,data_ram_ena}å’ŒALUControlD
     wire [5:0] sigsE;       //{regwrite,regdst,alusrc,memwrite,memetoreg,data_ram_ena}
-    wire [4:0] alucontrolE; //´ÓÁ÷Ë®Ïß¼Ä´æÆ÷DE¶Á³öµÄALU¿ØÖÆĞÅºÅ
+    wire [4:0] alucontrolE; //ä»æµæ°´çº¿å¯„å­˜å™¨DEè¯»å‡ºçš„ALUæ§åˆ¶ä¿¡å·
     
-    // ¹Ø¼üĞŞÕı£ºEx¼¶Á÷Ë®Ïß¼Ä´æÆ÷Ó¦µ±ÊÜ stallE (ÕâÀïÓÃ stall_divE´úÌæ, ĞèÈ·±£Âß¼­Ò»ÖÂ) ¿ØÖÆ
-    // Èç¹û³ı·¨Æ÷Ã¦£¬ID->EX µÄ¿ØÖÆĞÅºÅÒ²²»Ó¦¸üĞÂ£¬Ó¦±£³Öµ±Ç°Ö¸ÁîµÄ¿ØÖÆĞÅºÅ
-    // È»¶ø controller ÄÚ²¿µÄ floprc Ã»ÓĞ en ¶Ë¿Ú£¬Õâ¿ÉÄÜÊÇÎÊÌâµÄ¸ùÔ´¡£
-    // ÎÒÃÇĞèÒª½«ÆäÌæ»»Îª flopenrc£¬²¢´«Èë ~stall_divE ×÷ÎªÊ¹ÄÜĞÅºÅ¡£
-    // µ«ÊÇÕâÀïÊ¹ÓÃµÄÊÇ floprc (without enable)£¬Õâ»áµ¼ÖÂÃ¿Ò»ÅÄ¿ØÖÆĞÅºÅ¶¼ÍùÏÂÁ÷¡£
+    // å…³é”®ä¿®æ­£ï¼šExçº§æµæ°´çº¿å¯„å­˜å™¨åº”å½“å— stallE (è¿™é‡Œç”¨ stall_divEä»£æ›¿, éœ€ç¡®ä¿é€»è¾‘ä¸€è‡´) æ§åˆ¶
+    // å¦‚æœé™¤æ³•å™¨å¿™ï¼ŒID->EX çš„æ§åˆ¶ä¿¡å·ä¹Ÿä¸åº”æ›´æ–°ï¼Œåº”ä¿æŒå½“å‰æŒ‡ä»¤çš„æ§åˆ¶ä¿¡å·
+    // ç„¶è€Œ controller å†…éƒ¨çš„ floprc æ²¡æœ‰ en ç«¯å£ï¼Œè¿™å¯èƒ½æ˜¯é—®é¢˜çš„æ ¹æºã€‚
+    // æˆ‘ä»¬éœ€è¦å°†å…¶æ›¿æ¢ä¸º flopenrcï¼Œå¹¶ä¼ å…¥ ~stall_divE ä½œä¸ºä½¿èƒ½ä¿¡å·ã€‚
+    // ä½†æ˜¯è¿™é‡Œä½¿ç”¨çš„æ˜¯ floprc (without enable)ï¼Œè¿™ä¼šå¯¼è‡´æ¯ä¸€æ‹æ§åˆ¶ä¿¡å·éƒ½å¾€ä¸‹æµã€‚
     
-    // ÁÙÊ±·½°¸£ºÈç¹û floprc Ã»ÓĞ en£¬ÎÒÃÇĞèÒªÔÚÕâÀïÇåÁã»òÕß±£³Ö£¿
-    // Í¨³£ Hazard µ¥Ôª»áÇå³ı ID/EX ¼Ä´æÆ÷ (FlushE)¡£µ«Èç¹ûÊÇ Stall£¬Ó¦¸Ã±£³Ö¡£
-    // ÈÃÎÒÃÇ²é¿´ floprc µÄ¶¨Òå¡£Èç¹û²»ÄÜÔİÍ££¬ÏÂÒ»ÌõÖ¸ÁîµÄ¿ØÖÆĞÅºÅ¾Í»á¸²¸Çµ±Ç°ÕıÔÚ×ö³ı·¨µÄÖ¸ÁîĞÅºÅ¡£
+    // ä¸´æ—¶æ–¹æ¡ˆï¼šå¦‚æœ floprc æ²¡æœ‰ enï¼Œæˆ‘ä»¬éœ€è¦åœ¨è¿™é‡Œæ¸…é›¶æˆ–è€…ä¿æŒï¼Ÿ
+    // é€šå¸¸ Hazard å•å…ƒä¼šæ¸…é™¤ ID/EX å¯„å­˜å™¨ (FlushE)ã€‚ä½†å¦‚æœæ˜¯ Stallï¼Œåº”è¯¥ä¿æŒã€‚
+    // è®©æˆ‘ä»¬æŸ¥çœ‹ floprc çš„å®šä¹‰ã€‚å¦‚æœä¸èƒ½æš‚åœï¼Œä¸‹ä¸€æ¡æŒ‡ä»¤çš„æ§åˆ¶ä¿¡å·å°±ä¼šè¦†ç›–å½“å‰æ­£åœ¨åšé™¤æ³•çš„æŒ‡ä»¤ä¿¡å·ã€‚
     
-    // ÕıÈ·µÄ×ö·¨£º½« r1E, r2E »»³É flopenrc£¬²¢Ê¹ÓÃ ~stallE ¿ØÖÆ
-    // µ±Ç° controller ½ÓÊÕÁË stallE¡£
+    // æ­£ç¡®çš„åšæ³•ï¼šå°† r1E, r2E æ¢æˆ flopenrcï¼Œå¹¶ä½¿ç”¨ ~stallE æ§åˆ¶
+    // å½“å‰ controller æ¥æ”¶äº† stallEã€‚
 
     flopenrc #(6) r1E(.clk(clka),.rst(rst),.en(~stallE),.clear(1'b0),.d({sigsD[7:5],sigsD[3:1]}),.q(sigsE));
     flopenrc #(5) r2E(.clk(clka),.rst(rst),.en(~stallE),.clear(1'b0),.d(alucontrolD),.q(alucontrolE));
@@ -56,27 +56,27 @@ module controller(
     assign memtoregE = sigsE[1];
     assign regwriteE = sigsE[5];
     
-    //Á÷Ë®Ïß¼Ä´æÆ÷EM¼äµÄÊı¾İ½ø³ö£º{regwrite,memwrite,memetoreg,data_ram_ena}
+    //æµæ°´çº¿å¯„å­˜å™¨EMé—´çš„æ•°æ®è¿›å‡ºï¼š{regwrite,memwrite,memetoreg,data_ram_ena}
     wire [3:0] sigsM;
-    // Í¬Ñù£¬EM ¼¶¼Ä´æÆ÷Ò²Ó¦¸ÃÊÜ¿Ø£¬»òÕß±» flush¡£
-    // ÔÚ datapath ÖĞ£¬ÎÒÃÇÒÑ¾­Áî stall_divE ²úÉú flushM¡£
-    // Èç¹û controller ÖĞµÄ¿ØÖÆĞÅºÅÁ÷Ïò M ¼¶£¬Ò²Ó¦¸Ã±» flush »ò stall¡£
-    // ¸ù¾İ datapath µÄÂß¼­£¬Ex ¼¶±»ÔİÍ££¬ÒâÎ¶×ÅEx¼¶µÄÊä³öÎŞĞ§¡£
-    // Òò´Ë M ¼¶Ó¦¸Ã½ÓÊÕÆøÅİ (Control signals zeroed out)¡£
-    // ÕâÀïÊ¹ÓÃ flush (clear) Âß¼­¡£ÎÒÃÇÓÃ stall_divE ×÷Îª clear ĞÅºÅ¡£
+    // åŒæ ·ï¼ŒEM çº§å¯„å­˜å™¨ä¹Ÿåº”è¯¥å—æ§ï¼Œæˆ–è€…è¢« flushã€‚
+    // åœ¨ datapath ä¸­ï¼Œæˆ‘ä»¬å·²ç»ä»¤ stall_divE äº§ç”Ÿ flushMã€‚
+    // å¦‚æœ controller ä¸­çš„æ§åˆ¶ä¿¡å·æµå‘ M çº§ï¼Œä¹Ÿåº”è¯¥è¢« flush æˆ– stallã€‚
+    // æ ¹æ® datapath çš„é€»è¾‘ï¼ŒEx çº§è¢«æš‚åœï¼Œæ„å‘³ç€Exçº§çš„è¾“å‡ºæ— æ•ˆã€‚
+    // å› æ­¤ M çº§åº”è¯¥æ¥æ”¶æ°”æ³¡ (Control signals zeroed out)ã€‚
+    // è¿™é‡Œä½¿ç”¨ flush (clear) é€»è¾‘ã€‚æˆ‘ä»¬ç”¨ stall_divE ä½œä¸º clear ä¿¡å·ã€‚
     
-    // ×¢Òâ£ºÔ­À´µÄ r1M ÊÇ floprc¡£ÎÒÃÇĞèÒª°ÑËü±ä³É flopenrc ²¢ÇÒÖ§³Ö clear¡£
-    // floprc µÄ clear ¶Ë¿ÚÒÑ¾­ÓĞÁË¡£
-    // µ± stall_divE Îª 1 Ê±£¬ÒâÎ¶×Å EX ¼¶»¹Ã»ËãÍê£¬ËùÒÔ²»ÄÜÈÃ EX ¼¶µÄÓĞĞ§¿ØÖÆĞÅºÅÁ÷Ïò M ¼¶¡£
-    // Ó¦¸ÃÏò M ¼¶²åÈëÆøÅİ£¨¼´ÇåÁã M ¼¶¿ØÖÆĞÅºÅ£©¡£
+    // æ³¨æ„ï¼šåŸæ¥çš„ r1M æ˜¯ floprcã€‚æˆ‘ä»¬éœ€è¦æŠŠå®ƒå˜æˆ flopenrc å¹¶ä¸”æ”¯æŒ clearã€‚
+    // floprc çš„ clear ç«¯å£å·²ç»æœ‰äº†ã€‚
+    // å½“ stall_divE ä¸º 1 æ—¶ï¼Œæ„å‘³ç€ EX çº§è¿˜æ²¡ç®—å®Œï¼Œæ‰€ä»¥ä¸èƒ½è®© EX çº§çš„æœ‰æ•ˆæ§åˆ¶ä¿¡å·æµå‘ M çº§ã€‚
+    // åº”è¯¥å‘ M çº§æ’å…¥æ°”æ³¡ï¼ˆå³æ¸…é›¶ M çº§æ§åˆ¶ä¿¡å·ï¼‰ã€‚
     floprc #(4) r1M(.clk(clka),.rst(rst),.clear(flushM),.d({sigsE[5],sigsE[2:0]}),.q(sigsM));
     
     assign memwrite = sigsM[2];
     assign data_ram_ena = sigsM[0];
-    assign regwriteM = sigsM[3];  //´«ÈëdatapathÖĞµÄhazardĞèÒª
-    assign memtoregM = sigsM[1]; //´«ÈëdatapathÖĞµÄhazardĞèÒª
+    assign regwriteM = sigsM[3];  //ä¼ å…¥datapathä¸­çš„hazardéœ€è¦
+    assign memtoregM = sigsM[1]; //ä¼ å…¥datapathä¸­çš„hazardéœ€è¦
     
-//Á÷Ë®Ïß¼Ä´æÆ÷MW¼äµÄÊı¾İ½ø³ö£º{regwrite,memetoreg}
+//æµæ°´çº¿å¯„å­˜å™¨MWé—´çš„æ•°æ®è¿›å‡ºï¼š{regwrite,memetoreg}
     wire [1:0] sigsW;
     floprc #(2) r1W(.clk(clka),.rst(rst),.clear(1'b0),.d({sigsM[3],sigsM[1]}),.q(sigsW));
     assign regwrite = sigsW[1];

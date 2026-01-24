@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-//含有rst、en和clear功能的触发器
+//鍚湁rst銆乪n鍜宑lear鍔熻兘鐨勮Е鍙戝櫒
 module flopenrc #(parameter WIDTH = 8)(
 	input wire clk,rst,en,clear,
 	input wire[WIDTH-1:0] d,

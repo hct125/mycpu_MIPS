@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-/*Main DecoderÄ£¿é£º½«jump,regwrite,regdst,alusrc,branch,memwrite,memetoreg,data_ram_ena,sextºÏ²¢Îªsigs£¬·½±ãÊäÈëÊä³ö
+/*Main Decoderæ¨¡å—ï¼šå°†jump,regwrite,regdst,alusrc,branch,memwrite,memetoreg,data_ram_ena,sextåˆå¹¶ä¸ºsigsï¼Œæ–¹ä¾¿è¾“å…¥è¾“å‡º
 */
 `include "defines2.vh"
 module main_dec(

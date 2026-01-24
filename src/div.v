@@ -26,10 +26,10 @@
 // File:    div.v
 // Author:  Lei Silei
 // E-mail:  leishangwen@163.com
-// Description: ����ģ��
+// Description: ³ý·¨Ä£¿é
 // Revision: 1.0
 //////////////////////////////////////////////////////////////////////
-//1.1 ?? ready ????? datapath ????; ????? bug
+//1.1 增加 ready 信号，适配 datapath 握手逻辑; 修复背靠背 bug
 `timescale 1ns/1ps
 `include "defines2.vh"
 
@@ -41,8 +41,8 @@ module div(
 	input wire  signed_div_i,
 	input wire[31:0] opdata1_i,
 	input wire[31:0] opdata2_i,
-	input wire start_i,  //????
-	input wire annul_i, //????
+	input wire start_i,  //开始信号
+	input wire annul_i, //清空信号
 	
 	output reg[63:0] result_o,  
 	output reg ready_o  // High when result is valid

@@ -1,61 +1,61 @@
 `timescale 1ns / 1ps
-/*Ã°ÏÕ½â¾ö£º£¨Êı¾İÃ°ÏÕ£©Êı¾İÇ°ÍÆ+Á÷Ë®ÏßÔİÍ£¡¢£¨¿ØÖÆÃ°ÏÕ£©ÌáÇ°ÅĞ¶Ï·ÖÖ§µ¼ÖÂµÄÊı¾İÇ°ÍÆ¡¢Á÷Ë®ÏßÔİÍ£
-    ÆäÖĞÁ÷Ë®ÏßÔİÍ£Ê±ĞèÒªÇå¿ÕÏÂÒ»¼¶Á÷Ë®Ïß¡£ÌáÇ°ÅĞ¶Ï·ÖÖ§·ÅÔÚdatapathÀïÊµÏÖ£¬²¢²»ÔÚhazardÖĞÊµÏÖ
+/*å†’é™©è§£å†³ï¼šï¼ˆæ•°æ®å†’é™©ï¼‰æ•°æ®å‰æ¨+æµæ°´çº¿æš‚åœã€ï¼ˆæ§åˆ¶å†’é™©ï¼‰æå‰åˆ¤æ–­åˆ†æ”¯å¯¼è‡´çš„æ•°æ®å‰æ¨ã€æµæ°´çº¿æš‚åœ
+    å…¶ä¸­æµæ°´çº¿æš‚åœæ—¶éœ€è¦æ¸…ç©ºä¸‹ä¸€çº§æµæ°´çº¿ã€‚æå‰åˆ¤æ–­åˆ†æ”¯æ”¾åœ¨datapathé‡Œå®ç°ï¼Œå¹¶ä¸åœ¨hazardä¸­å®ç°
 */
 module hazard(
     input wire rst,
-    input wire [4:0] rsD,       //instr2[25:21]£¨Í¬Ò»Ê±¿ÌrsDºÍrsE¶ÔÓ¦ÏÈºóÁ½ÌõÖ¸ÁîµÄrs×Ö¶Î£¬²¢²»ÏàÍ¬£©
+    input wire [4:0] rsD,       //instr2[25:21]ï¼ˆåŒä¸€æ—¶åˆ»rsDå’ŒrsEå¯¹åº”å…ˆåä¸¤æ¡æŒ‡ä»¤çš„rså­—æ®µï¼Œå¹¶ä¸ç›¸åŒï¼‰
     input wire [4:0] rtD,       //instr2[20:15]
     input wire [4:0] rsE,       //instr1[25:21]
     input wire [4:0] rtE,       //instr1[20:15]
-    input wire regwriteE,       //¼Ä´æÆ÷¶ÑµÄĞ´Ê¹ÄÜĞÅºÅ£¨E¡¢M¡¢W±íÊ¾excute¡¢memoryºÍwriteback½×¶Î£©
+    input wire regwriteE,       //å¯„å­˜å™¨å †çš„å†™ä½¿èƒ½ä¿¡å·ï¼ˆEã€Mã€Wè¡¨ç¤ºexcuteã€memoryå’Œwritebacké˜¶æ®µï¼‰
     input wire regwriteM,  
     input wire regwriteW,  
-    input wire memtoregE,       //ÅĞ¶ÏĞ´»Ø¼Ä´æÆ÷¶ÑµÄÊı¾İÊÇswµÄReadData(0)»¹ÊÇRµÄALUOut(1)
+    input wire memtoregE,       //åˆ¤æ–­å†™å›å¯„å­˜å™¨å †çš„æ•°æ®æ˜¯swçš„ReadData(0)è¿˜æ˜¯Rçš„ALUOut(1)
     input wire memtoregM,
-    input wire branchD,         //ÌáÇ°ÅĞ¶Ï·ÖÖ§
-    input wire [4:0] writeregE, //¼Ä´æÆ÷¶ÑµÄĞ´µØÖ·£¬Á¬½Ówa3W
+    input wire branchD,         //æå‰åˆ¤æ–­åˆ†æ”¯
+    input wire [4:0] writeregE, //å¯„å­˜å™¨å †çš„å†™åœ°å€ï¼Œè¿æ¥wa3W
     input wire [4:0] writeregM,
     input wire [4:0] writeregW,
     input wire stall_divE,
-    output [1:0] forwordAE,     //ÔÚexcute½×¶Î¿ØÖÆmux3Ñ¡ÔñSrcA£¨Êı¾İÃ°ÏÕ£©
-    output [1:0] forwordBE,     //ÔÚexcute½×¶Î¿ØÖÆmux3Ñ¡ÔñSrcB
-    output forwordAD,     //ÔÚdecode½×¶Î¿ØÖÆ¶şÑ¡Ò»Ñ¡Ôñregfile rd1³öÀ´µÄÊı¾İ£¨¿ØÖÆÃ°ÏÕÏÂµÄÊı¾İÃ°ÏÕ£©
-    output forwordBD,     //ÔÚdecode½×¶Î¿ØÖÆ¶şÑ¡Ò»Ñ¡Ôñregfile rd2³öÀ´µÄÊı¾İ
-    output reg stallF,          //instr fetch¼¶ÔİÍ£
-    output reg stallD,          //decoderÔİÍ£
+    output [1:0] forwordAE,     //åœ¨excuteé˜¶æ®µæ§åˆ¶mux3é€‰æ‹©SrcAï¼ˆæ•°æ®å†’é™©ï¼‰
+    output [1:0] forwordBE,     //åœ¨excuteé˜¶æ®µæ§åˆ¶mux3é€‰æ‹©SrcB
+    output forwordAD,     //åœ¨decodeé˜¶æ®µæ§åˆ¶äºŒé€‰ä¸€é€‰æ‹©regfile rd1å‡ºæ¥çš„æ•°æ®ï¼ˆæ§åˆ¶å†’é™©ä¸‹çš„æ•°æ®å†’é™©ï¼‰
+    output forwordBD,     //åœ¨decodeé˜¶æ®µæ§åˆ¶äºŒé€‰ä¸€é€‰æ‹©regfile rd2å‡ºæ¥çš„æ•°æ®
+    output reg stallF,          //instr fetchçº§æš‚åœ
+    output reg stallD,          //decoderæš‚åœ
     output reg stallE,
-    output reg flushE,          //excuteË¢ĞÂ£¨¼´²åÈëÆøÅİ£©
+    output reg flushE,          //excuteåˆ·æ–°ï¼ˆå³æ’å…¥æ°”æ³¡ï¼‰
     output reg flushM
     );
-//Êı¾İÇ°ÍÆ½â¾öRÖ¸ÁîºÍÇ°Á½ÌõlwÖ¸ÁîµÄÊı¾İÃ°ÏÕ
-    /*ALU¶Ë¿ÚSrcAEµÄÊı¾İ¿ÉÄÜÀ´×Ô£º£¨×¢ÒâÅĞ¶ÏreE!=0£¬·ñÔò¶Á±£Áô¼Ä´æÆ÷Ö±½ÓÊä³ö£©
-        ¼Ä´æÆ÷¶Ñ£¨ÎŞÃ°ÏÕÇé¿öÏÂ£©£ºforwordAE=00¡¢SrcAE=RsD
-        Êı¾İ´æ´¢Æ÷(lwµÄÊı¾İÃ°ÏÕ)£ºforwordAE=01¡¢SrcAE=ResultW£¨lwÖ¸ÁîĞ´»Ø¼Ä´æÆ÷¶ÑÔÚMEM½×¶Î£¬ÆäºóµÚ¶şÌõÖ¸ÁîÈçĞèÒª¸ÃÊı¾İ»áÊÜÓ°Ïì£©
-        ALUOut£¨ALUÔËËãµÄÊı¾İÃ°ÏÕ£©£ºforwordAE=10¡¢SrcAE=ALUOutM£¨RĞÍÖ¸ÁîĞ´»Ø¼Ä´æÆ÷¶ÑÔÚWB½×¶Î£¬ÆäºóÒ»ÌõÖ¸ÁîÈçĞèÒª¸ÃÊı¾İ¶¼»áÊÜÓ°Ïì£©
+//æ•°æ®å‰æ¨è§£å†³RæŒ‡ä»¤å’Œå‰ä¸¤æ¡lwæŒ‡ä»¤çš„æ•°æ®å†’é™©
+    /*ALUç«¯å£SrcAEçš„æ•°æ®å¯èƒ½æ¥è‡ªï¼šï¼ˆæ³¨æ„åˆ¤æ–­reE!=0ï¼Œå¦åˆ™è¯»ä¿ç•™å¯„å­˜å™¨ç›´æ¥è¾“å‡ºï¼‰
+        å¯„å­˜å™¨å †ï¼ˆæ— å†’é™©æƒ…å†µä¸‹ï¼‰ï¼šforwordAE=00ã€SrcAE=RsD
+        æ•°æ®å­˜å‚¨å™¨(lwçš„æ•°æ®å†’é™©)ï¼šforwordAE=01ã€SrcAE=ResultWï¼ˆlwæŒ‡ä»¤å†™å›å¯„å­˜å™¨å †åœ¨MEMé˜¶æ®µï¼Œå…¶åç¬¬äºŒæ¡æŒ‡ä»¤å¦‚éœ€è¦è¯¥æ•°æ®ä¼šå—å½±å“ï¼‰
+        ALUOutï¼ˆALUè¿ç®—çš„æ•°æ®å†’é™©ï¼‰ï¼šforwordAE=10ã€SrcAE=ALUOutMï¼ˆRå‹æŒ‡ä»¤å†™å›å¯„å­˜å™¨å †åœ¨WBé˜¶æ®µï¼Œå…¶åä¸€æ¡æŒ‡ä»¤å¦‚éœ€è¦è¯¥æ•°æ®éƒ½ä¼šå—å½±å“ï¼‰
     */
-    assign forwordAE = ((rsE != 5'b0) & (rsE == writeregM) & regwriteM) ? 2'b10:    //Ç°Ò»ÌõÖ¸ÁîÊÇRĞÍ£¬Ö±½Ó½«ALUOut´«»Ø
-                       ((rsE != 5'b0) & (rsE == writeregW) & regwriteW) ? 2'b01:    //Ç°Á½ÌõÖ¸ÁîÊÇlw
+    assign forwordAE = ((rsE != 5'b0) & (rsE == writeregM) & regwriteM) ? 2'b10:    //å‰ä¸€æ¡æŒ‡ä»¤æ˜¯Rå‹ï¼Œç›´æ¥å°†ALUOutä¼ å›
+                       ((rsE != 5'b0) & (rsE == writeregW) & regwriteW) ? 2'b01:    //å‰ä¸¤æ¡æŒ‡ä»¤æ˜¯lw
                         2'b00;
-    assign forwordBE = ((rtE != 5'b0) & (rtE == writeregM) & regwriteM) ? 2'b10:    //SrcBEÍ¬SrcAE
+    assign forwordBE = ((rtE != 5'b0) & (rtE == writeregM) & regwriteM) ? 2'b10:    //SrcBEåŒSrcAE
                        ((rtE != 5'b0) & (rtE == writeregW) & regwriteW) ? 2'b01:
                         2'b00;
-//ÌáÇ°ÅĞ¶Ï·ÖÖ§½â¾öbeqºó2¡¢3ÌõÖ¸ÁîµÄ¿ØÖÆÃ°ÏÕÊ±³öÏÖµÄÊı¾İÃ°ÏÕ
-    assign forwordAD = ((rsD != 5'b0) & (rsD == writeregE) & regwriteE);            //Ç°Ò»ÌõÖ¸ÁîÒªĞ´»Ø¼Ä´æÆ÷¶ÑÇÒ¸ÃÊı¾İ±»beqÖ¸ÁîËùÓÃ
+//æå‰åˆ¤æ–­åˆ†æ”¯è§£å†³beqå2ã€3æ¡æŒ‡ä»¤çš„æ§åˆ¶å†’é™©æ—¶å‡ºç°çš„æ•°æ®å†’é™©
+    assign forwordAD = ((rsD != 5'b0) & (rsD == writeregE) & regwriteE);            //å‰ä¸€æ¡æŒ‡ä»¤è¦å†™å›å¯„å­˜å™¨å †ä¸”è¯¥æ•°æ®è¢«beqæŒ‡ä»¤æ‰€ç”¨
     assign forwordBD = ((rtD != 5'b0) & (rtD == writeregE) & regwriteE);
-//Á÷Ë®ÏßÔİÍ£½â¾ölwºóÒ»ÌõÖ¸ÁîĞèÒªÓÃ¼Ä´æÆ÷¶ÑÊı¾İ´øÀ´µÄÊı¾İÃ°ÏÕ¡¢beqĞèÒªÓÃÇ°Ò»ÌõÖ¸ÁîĞ´»Ø¼Ä´æÆ÷¶ÑµÄÊı¾İ
-    /*lwÖ¸ÁîĞ´Èë¼Ä´æÆ÷¶ÑµÄµØÖ·Îªrt£¬Òò´ËÏÂÒ»ÌõÖ¸ÁîÈôÒªÓÃµ½rtÔòĞèÒªÔİÍ££¬¼´rsD==rtE»òrtD==rtE
-      beqÖ¸ÁîĞèÒªrs¡¢rtºÅ¼Ä´æÆ÷µÄÊı¾İ£¬ÈôÉÏÒ»ÌõÖ¸ÁîÒªĞ´µ½¸Ã¼Ä´æÆ÷£¬ÔòĞèÒªÔİÍ£Á÷Ë®Ïß
+//æµæ°´çº¿æš‚åœè§£å†³lwåä¸€æ¡æŒ‡ä»¤éœ€è¦ç”¨å¯„å­˜å™¨å †æ•°æ®å¸¦æ¥çš„æ•°æ®å†’é™©ã€beqéœ€è¦ç”¨å‰ä¸€æ¡æŒ‡ä»¤å†™å›å¯„å­˜å™¨å †çš„æ•°æ®
+    /*lwæŒ‡ä»¤å†™å…¥å¯„å­˜å™¨å †çš„åœ°å€ä¸ºrtï¼Œå› æ­¤ä¸‹ä¸€æ¡æŒ‡ä»¤è‹¥è¦ç”¨åˆ°rtåˆ™éœ€è¦æš‚åœï¼Œå³rsD==rtEæˆ–rtD==rtE
+      beqæŒ‡ä»¤éœ€è¦rsã€rtå·å¯„å­˜å™¨çš„æ•°æ®ï¼Œè‹¥ä¸Šä¸€æ¡æŒ‡ä»¤è¦å†™åˆ°è¯¥å¯„å­˜å™¨ï¼Œåˆ™éœ€è¦æš‚åœæµæ°´çº¿
     */
-    wire lwstall,branch_stall;                                      //Á÷Ë®ÏßÔİÍ£ĞÅºÅ
-    assign lwstall = (((rsD == rtE) | (rtD == rtE)) & memtoregE);   //ÅĞ¶ÏÇ°Ò»ÌõÖ¸ÁîĞèÒª¶Ô¼Ä´æÆ÷¶ÑĞ´Èë(memturegE)²¢ÇÒĞ´ÈëµØÖ·rtEÓë±»µ±Ç°Ö¸ÁîÓÃµ½
-    assign branch_stall=( branchD&regwriteE&((writeregE==rsD)|(writeregE==rtD)) )   //µ±Ç°Ö¸ÁîÎªbranch¡¢ÉÏÒ»ÌõÖ¸ÁîÒªĞ´¼Ä´æÆ÷¶ÑÇÒĞ´µÄÊı¾İµ±Ç°ÒªÓÃ
-                       |( branchD&memtoregM&((writeregM==rsD)|(writeregM==rtD)) );  //µ±Ç°Ö¸ÁîÎªbranch¡¢ÉÏ2ÌõÖ¸ÁîÒªĞ´¼Ä´æÆ÷¶ÑÇÒĞ´µÄÊı¾İµ±Ç°ÒªÓÃ
+    wire lwstall,branch_stall;                                      //æµæ°´çº¿æš‚åœä¿¡å·
+    assign lwstall = (((rsD == rtE) | (rtD == rtE)) & memtoregE);   //åˆ¤æ–­å‰ä¸€æ¡æŒ‡ä»¤éœ€è¦å¯¹å¯„å­˜å™¨å †å†™å…¥(memturegE)å¹¶ä¸”å†™å…¥åœ°å€rtEä¸è¢«å½“å‰æŒ‡ä»¤ç”¨åˆ°
+    assign branch_stall=( branchD&regwriteE&((writeregE==rsD)|(writeregE==rtD)) )   //å½“å‰æŒ‡ä»¤ä¸ºbranchã€ä¸Šä¸€æ¡æŒ‡ä»¤è¦å†™å¯„å­˜å™¨å †ä¸”å†™çš„æ•°æ®å½“å‰è¦ç”¨
+                       |( branchD&memtoregM&((writeregM==rsD)|(writeregM==rtD)) );  //å½“å‰æŒ‡ä»¤ä¸ºbranchã€ä¸Š2æ¡æŒ‡ä»¤è¦å†™å¯„å­˜å™¨å †ä¸”å†™çš„æ•°æ®å½“å‰è¦ç”¨
     always @(*)begin
-        stallF = rst? 1'b0 : (lwstall | branch_stall | stall_divE);      //Èô±»ÖØÖÃÔòÈ«²¿ÇåÁã
-        stallD = rst? 1'b0 : (lwstall | branch_stall | stall_divE);      //lw´øÀ´µÄÊı¾İÃ°ÏÕ»òÌáÇ°ÅĞ¶Ï·ÖÖ§´øÀ´µÄÊı¾İÃ°ÏÕ¶¼¿ÉÒÔÔİÍ£Á÷Ë®Ïß
+        stallF = rst? 1'b0 : (lwstall | branch_stall | stall_divE);      //è‹¥è¢«é‡ç½®åˆ™å…¨éƒ¨æ¸…é›¶
+        stallD = rst? 1'b0 : (lwstall | branch_stall | stall_divE);      //lwå¸¦æ¥çš„æ•°æ®å†’é™©æˆ–æå‰åˆ¤æ–­åˆ†æ”¯å¸¦æ¥çš„æ•°æ®å†’é™©éƒ½å¯ä»¥æš‚åœæµæ°´çº¿
         stallE = rst? 1'b0 : stall_divE;
-        flushE = rst? 1'b0 : (lwstall | branch_stall);      //lw/beqÏÂÒ»ÌõÒÑ¾­Ö´ĞĞµÄĞèÒªÇå¿Õ
+        flushE = rst? 1'b0 : (lwstall | branch_stall);      //lw/beqä¸‹ä¸€æ¡å·²ç»æ‰§è¡Œçš„éœ€è¦æ¸…ç©º
         flushM = rst? 1'b0 : stall_divE;
     end
 

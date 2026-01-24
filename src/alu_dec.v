@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-//根据op码和funct码解码，输出对应的alu control信号
+//鏍规嵁op鐮佸拰funct鐮佽В鐮侊紝杈撳嚭瀵瑰簲鐨刟lu control淇″彿
 `include "defines2.vh"
 module alu_dec(
     input wire [5:0] funct,
