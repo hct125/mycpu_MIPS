@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-//2Ñ¡1¶àÂ·Ñ¡ÔñÆ÷
+//2é€‰1å¤šè·¯é€‰æ‹©å™¨
 module mux2 #(parameter WIDTH = 32)(
     input wire [WIDTH-1:0] a,
     input wire [WIDTH-1:0] b,

@@ -1,20 +1,43 @@
 `timescale 1ns / 1ps
-// 根据op码和funct码解码，输出对应的alu control信号
+//根据op码和funct码解码，输出对应的alu control信号
+`include "defines2.vh"
 module alu_dec(
     input wire [5:0] funct,
-    input wire [1:0] op,
-    output wire [2:0] alucontrol
+    input wire [3:0] op,
+    output reg [4:0] alucontrol
 );
 
-assign alucontrol = (op == 2'b00) ? 3'b010 : // lw sw addi (ADD)
-                    (op == 2'b01) ? 3'b001 : // ori (OR)
-                    (op == 2'b10) ? (
-                        (funct == 6'b100000) ? 3'b010 : // add
-                        (funct == 6'b100010) ? 3'b110 : // sub
-                        (funct == 6'b100100) ? 3'b000 : // and
-                        (funct == 6'b100101) ? 3'b001 : // or
-                        (funct == 6'b101010) ? 3'b111 : // slt 
-                        3'b000
-                    ) : 3'b000;
+// assign alucontrol = (op == 3'b000)? `ALU_ADD : //lw sw addi addiu
+always @(*) begin
+    case(op)
+        `R_TYPE_OP: begin
+                case(funct)
+                    `ADD: alucontrol <= `ADD_CONTROL;
+                    `ADDU: alucontrol <= `ADDU_CONTROL;
+                    `SUB: alucontrol <= `SUB_CONTROL;
+                    `SUBU: alucontrol <= `SUBU_CONTROL;
+                    `SLT: alucontrol <= `SLT_CONTROL;
+                    `SLTU: alucontrol <= `SLTU_CONTROL;
+                    `SLL: alucontrol <= `SLL_CONTROL;
+                    `AND: alucontrol <= `AND_CONTROL; 
+                    `OR: alucontrol <= `OR_CONTROL;
+                    `MULT: alucontrol <= `MULT_CONTROL;
+                    `MULTU: alucontrol <= `MULTU_CONTROL;
+                    `DIV: alucontrol <= `DIV_CONTROL;
+                    `DIVU: alucontrol <= `DIVU_CONTROL;
+                    default: alucontrol <= 5'b00000;
+                endcase
+        end
+        `ORI_OP: alucontrol <= `OR_CONTROL;
+        `ADDI_OP: alucontrol <= `ADD_CONTROL;
+        `ADDIU_OP: alucontrol <= `ADDU_CONTROL;
+        `SLTI_OP: alucontrol <= `SLT_CONTROL;
+        `SLTIU_OP: alucontrol <= `SLTU_CONTROL;
+        `MEM_OP: alucontrol <= `ADD_CONTROL;
+        `USELESS_OP: alucontrol <= 5'b00000;
+        default: alucontrol <= 5'b00000;
+    endcase
+end
+
                                 
 endmodule

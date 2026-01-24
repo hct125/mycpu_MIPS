@@ -1,17 +1,37 @@
 `timescale 1ns / 1ps
-// ALU??
+//ALU模块
+`include "defines2.vh"
 module alu(
-    input [31:0] a,
-    input [31:0] b,
-    input [2:0] op,
-    output wire [31:0] result,
+    input [31:0] a, //A端口
+    input [31:0] b, //B端口
+    input [4:0] sa, //移位量
+    input [4:0] op, //运算符控制码
+    output reg [31:0] result,  //结果
+    output reg overflow, //溢出标志
     output wire zero
-);
-    assign result = (op == 3'b010) ? a + b :
-                    (op == 3'b110) ? a - b :
-                    (op == 3'b000) ? a & b :
-                    (op == 3'b001) ? a | b :
-                    (op == 3'b100) ? ~a : 
-                    (op == 3'b111) ? (a < b) : 32'h00000000;
+    );
+
+    always @(*) begin
+        overflow = 1'b0;
+        case(op)
+            `ADD_CONTROL: begin
+                result = a + b;
+                overflow = (a[31] == b[31]) && (result[31] != a[31]);
+            end
+            `ADDU_CONTROL: result = a + b;
+            `SUB_CONTROL: begin
+                result = a - b;
+                overflow = (a[31] != b[31]) && (result[31] != a[31]);
+            end
+            `SUBU_CONTROL: result = a - b;
+            `AND_CONTROL: result = a & b;
+            `OR_CONTROL: result = a | b;
+            `SLL_CONTROL: result = b << sa;
+            `SLT_CONTROL: result = $signed(a) < $signed(b) ? 1 : 0;
+            `SLTU_CONTROL: result = a < b ? 1 : 0;
+            
+            default: result = 32'b0;
+        endcase
+    end
     assign zero = (result == 32'b0);
 endmodule

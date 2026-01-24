@@ -1,3 +1,3 @@
 # mycpu
 
-lab4 : 5级流水线cpu
+5级流水线cpu

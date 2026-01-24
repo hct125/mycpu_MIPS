@@ -1,18 +1,15 @@
 `timescale 1ns / 1ps
-// PC?? - ????
-// ? en=0 ???PC????????
-
-module pc #(parameter WIDTH = 32)(
+//PC寄存器
+module pc(
     input wire clk,rst,en,
-    input wire [WIDTH-1:0] din,
-    output reg [WIDTH-1:0] q
-);
-    always @(posedge clk, posedge rst) begin
-        if(rst) begin
-            q <= 0;
-        end else if(en) begin
-            q <= din;
+    input wire [31:0] din,
+    output reg [31:0] q
+    );
+    always @(posedge clk) begin
+        if(rst) q<=32'b0;
+        else begin
+            if(en) q<=din;
+            else q<=q;
         end
-        // ? en=0 ???? q ???????
     end
 endmodule

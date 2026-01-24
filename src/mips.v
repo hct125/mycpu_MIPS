@@ -1,47 +1,41 @@
 `timescale 1ns / 1ps
-// MIPS CPU顶层模块 - 支持12条转移指令
+// MIPS CPU顶层模块
 
 module mips(
     input wire clk,
     input wire rst,
     input wire [31:0] mem_rdata,
-    input wire [31:0] instr,	
-    output wire [31:0] mem_wdata,
-    output wire [31:0] pc,
+    input wire [31:0] instr,
+    output wire [31:0] pc,	
     output wire inst_ram_ena,
     output wire data_ram_ena,
     output wire data_ram_wea,
     output wire [31:0] alu_result,
-    // 兼容旧接口（用于mycpu_top.v）
-    output wire memwrite,
-    output wire [31:0] aluout,
-    output wire [31:0] writedata,
-    output wire [31:0] readdata
+    output wire [31:0] mem_wdata
 );
-	
+
     wire memtoreg,alusrc,regdst,regwrite,jump,regwriteM,memtoregE,regwriteE,memtoregM,branch;
-    wire[2:0] alucontrol;
+    wire sext;//符号扩展控制信号
+    wire [4:0] alucontrol;
     wire [31:0] instrD;
-    // 新增：Link和Jump相关信号
+    // Link和Jump相关信号
     wire jalD,linkD,jrD,jalE,linkE,jrE,linkM,linkW;
-    // 新增：stall和flush信号
-    wire stallD, flushE;
+    // stall和flush信号
+    wire stallD, flushE, stallE, flushM;
     
-    assign inst_ram_ena = 1'b1;
-	
-    // 兼容赋值
-    assign memwrite = data_ram_wea;
-    assign aluout = alu_result;
-    assign writedata = mem_wdata;
-    assign readdata = mem_rdata;
+    assign inst_ram_ena = ~rst; // 复位时禁止指令存储器访问
 	
     // mips = datapath + controller
     controller c(
-        .clka(clk),
+        .clk(clk),
         .rst(rst),
         .instr(instrD),
-        .stallD(stallD),        // 连接stall信号
-        .flushE(flushE),        // 连接flush信号
+        // Hazard信号输入
+        .stallD(stallD),
+        .flushE(flushE),
+        .stallE(stallE),
+        .flushM(flushM),
+        // 控制信号输出
         .jump(jump),
         .branch(branch),
         .alusrc(alusrc),
@@ -54,20 +48,23 @@ module mips(
         .memtoregE(memtoregE),
         .regwriteE(regwriteE),
         .memtoregM(memtoregM),
+        .sext(sext),
         .alucontrol(alucontrol),
+        // Link/Jump 信号输出
         .jalD(jalD),.linkD(linkD),.jrD(jrD),
         .jalE(jalE),.linkE(linkE),.jrE(jrE),
         .linkM(linkM),.linkW(linkW)
     );
     
     datapath dp(
-        .clka(clk),
+        .clk(clk),
         .rst(rst),
         .instr(instr),
         .mem_rdata(mem_rdata),
         .pc(pc),
         .writedataM(mem_wdata),
         .alu_resultM(alu_result),
+        // 传入控制信号
         .memtoreg(memtoreg),
         .alusrc(alusrc),
         .regdst(regdst),
@@ -78,14 +75,19 @@ module mips(
         .memtoregE(memtoregE),
         .regwriteE(regwriteE),
         .memtoregM(memtoregM),
+        .sext(sext),
         .alucontrol(alucontrol),
-        .instrD_to_controller(instrD),
+        // 传入Link/Jump信号
         .jalD(jalD),.linkD(linkD),.jrD(jrD),
         .jalE(jalE),.linkE(linkE),.jrE(jrE),
         .linkM(linkM),.linkW(linkW),
-        // 输出stall和flush信号给controller
+        // 传出instrD给controller
+        .instrD_to_controller(instrD),
+        // 输出Hazard信号
         .stallD_out(stallD),
-        .flushE_out(flushE)
+        .flushE_out(flushE),
+        .stallE(stallE),
+        .flushM(flushM)
     );
 	
 endmodule
