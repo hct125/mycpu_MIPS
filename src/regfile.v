@@ -10,7 +10,7 @@ module regfile(
 	reg [31:0] rf[31:0];           //寄存器堆
 	//写是时序逻辑
 	always @(negedge clk) begin
-		if(we3) begin
+		if(we3 && (we3 != 5'b0)) begin
 			 rf[wa3] <= wd3;
 		end
 	end

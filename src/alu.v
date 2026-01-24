@@ -29,7 +29,6 @@ module alu(
             `SLL_CONTROL: result = b << sa;
             `SLT_CONTROL: result = $signed(a) < $signed(b) ? 1 : 0;
             `SLTU_CONTROL: result = a < b ? 1 : 0;
-            
             default: result = 32'b0;
         endcase
     end

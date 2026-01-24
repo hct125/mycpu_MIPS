@@ -1,93 +1,83 @@
 `timescale 1ns / 1ps
-// MIPS CPU顶层模块
 
 module mips(
-    input wire clk,
+	input wire clk,
     input wire rst,
     input wire [31:0] mem_rdata,
-    input wire [31:0] instr,
-    output wire [31:0] pc,	
+	input wire [31:0] instr,	
+	output wire [31:0] mem_wdata,
+    output wire [31:0] pc,
     output wire inst_ram_ena,
     output wire data_ram_ena,
-    output wire data_ram_wea,
-    output wire [31:0] alu_result,
-    output wire [31:0] mem_wdata
-);
-
-    wire memtoreg,alusrc,regdst,regwrite,jump,regwriteM,memtoregE,regwriteE,memtoregM,branch;
-    wire sext;//符号扩展控制信号
-    wire [4:0] alucontrol;
-    wire [31:0] instrD;
-    // Link和Jump相关信号
-    wire jalD,linkD,jrD,jalE,linkE,jrE,linkM,linkW;
-    // stall和flush信号
-    wire stallD, flushE, stallE, flushM;
-    
-    assign inst_ram_ena = ~rst; // 复位时禁止指令存储器访问
+    // ===== 访存修改：端口改为 4 位 =====
+    output wire [3:0] data_ram_wea,
+    // ===== 修改完毕 =====
+    output wire [31:0] alu_result    
+    );
 	
-    // mips = datapath + controller
-    controller c(
-        .clk(clk),
+	wire memtoreg,alusrc,regdst,regwrite,jump,regwriteM,memtoregE,regwriteE,memtoregM,branch,sext;
+	wire[4:0] alucontrol;
+	wire [31:0] instrD;
+	wire stallE; 
+	wire flushM; 
+	
+    // ===== 访存修改：定义中间信号 =====
+    wire memwrite_1bit; // 用于连接 Controller(1位) 和 Datapath(输入)
+    // ===== 修改完毕 =====
+
+	assign inst_ram_ena = ~rst;
+
+	controller c(
+        .clka(clk),
         .rst(rst),
         .instr(instrD),
-        // Hazard信号输入
-        .stallD(stallD),
-        .flushE(flushE),
-        .stallE(stallE),
-        .flushM(flushM),
-        // 控制信号输出
         .jump(jump),
         .branch(branch),
         .alusrc(alusrc),
-        .memwrite(data_ram_wea),
+        // ===== 访存修改：中间量接线 =====
+		.memwrite(memwrite_1bit),
+        // ===== 修改完毕 =====
         .memetoreg(memtoreg),
         .regwrite(regwrite),
         .regdst(regdst),
-        .data_ram_ena(data_ram_ena),
-        .regwriteM(regwriteM),
-        .memtoregE(memtoregE),
-        .regwriteE(regwriteE),
-        .memtoregM(memtoregM),
+		.data_ram_ena(data_ram_ena),
+    	.regwriteM(regwriteM),
+		.memtoregE(memtoregE),
+		.regwriteE(regwriteE),
+		.memtoregM(memtoregM),
         .sext(sext),
-        .alucontrol(alucontrol),
-        // Link/Jump 信号输出
-        .jalD(jalD),.linkD(linkD),.jrD(jrD),
-        .jalE(jalE),.linkE(linkE),.jrE(jrE),
-        .linkM(linkM),.linkW(linkW)
-    );
-    
-    datapath dp(
-        .clk(clk),
+		.alucontrol(alucontrol),
+		.stallE(stallE),
+		.flushM(flushM)
+	);
+
+	datapath dp(
+        .clka(clk),
         .rst(rst),
         .instr(instr),
         .mem_rdata(mem_rdata),
         .pc(pc),
         .writedataM(mem_wdata),
-        .alu_resultM(alu_result),
-        // 传入控制信号
+		.alu_resultM(alu_result),
         .memtoreg(memtoreg),
         .alusrc(alusrc),
         .regdst(regdst),
-        .regwrite(regwrite),
+		.regwrite(regwrite),
         .jump(jump),
         .branch(branch),
         .regwriteM(regwriteM),
         .memtoregE(memtoregE),
-        .regwriteE(regwriteE),
+		.regwriteE(regwriteE),
         .memtoregM(memtoregM),
         .sext(sext),
         .alucontrol(alucontrol),
-        // 传入Link/Jump信号
-        .jalD(jalD),.linkD(linkD),.jrD(jrD),
-        .jalE(jalE),.linkE(linkE),.jrE(jrE),
-        .linkM(linkM),.linkW(linkW),
-        // 传出instrD给controller
         .instrD_to_controller(instrD),
-        // 输出Hazard信号
-        .stallD_out(stallD),
-        .flushE_out(flushE),
-        .stallE(stallE),
-        .flushM(flushM)
-    );
+		.stallE(stallE),
+		.flushM(flushM),
+        // ===== 访存修改：中间量接线 =====
+        .memwrite(memwrite_1bit), // 输入：来自 Controller
+        .ben(data_ram_wea)        // 输出：去往 Data RAM 的 4位写使能
+        // ===== 修改完毕 =====
+	);
 	
 endmodule

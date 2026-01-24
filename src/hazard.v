@@ -1,105 +1,63 @@
 `timescale 1ns / 1ps
-// Hazard Unit - 解决数据冒险与控制冒险
+/*冒险解决：（数据冒险）数据前推+流水线暂停、（控制冒险）提前判断分支导致的数据前推、流水线暂停
+    其中流水线暂停时需要清空下一级流水线。提前判断分支放在datapath里实现，并不在hazard中实现
+*/
 module hazard(
     input wire rst,
-    input wire [4:0] rsD,       // D阶段rs
-    input wire [4:0] rtD,       // D阶段rt
-    input wire [4:0] rsE,       // E阶段rs
-    input wire [4:0] rtE,       // E阶段rt
-    input wire regwriteE,       // E阶段写寄存器使能
-    input wire regwriteM,       // M阶段写寄存器使能
-    input wire regwriteW,       // W阶段写寄存器使能
-    input wire memtoregE,       // E阶段是否从内存读取 (Load指令)
-    input wire memtoregM,       // M阶段是否从内存读取 (Load指令)
-    input wire branchD,         // D阶段是否为分支指令
-    input wire [4:0] writeregE, // E阶段目标寄存器
-    input wire [4:0] writeregM, // M阶段目标寄存器
-    input wire [4:0] writeregW, // W阶段目标寄存器
-    input wire stall_divE,      // E阶段除法器忙信号 (Arithmetic新增)
-    input wire jump_conflictD,  // 跳转冲突（JR/JALR的rs有数据冒险）(HEAD新增)
-    input wire linkE,           // E阶段是否为Link指令 (HEAD新增)
-    
-    // Outputs
-    output [1:0] forwordAE,     // E阶段SrcA转发控制
-    output [1:0] forwordBE,     // E阶段SrcB转发控制
-    output [1:0] forwordAD,     // D阶段rs转发控制 (分支判断用)
-    output [1:0] forwordBD,     // D阶段rt转发控制 (分支判断用)
-    output reg stallF,          // F阶段暂停
-    output reg stallD,          // D阶段暂停
-    output reg stallE,          // E阶段暂停
-    output reg flushE,          // E阶段清空 (插入气泡)
-    output reg flushM           // M阶段清空 (插入气泡)
-);
-
-    // E阶段转发逻辑 (Data Hazard on ALU)
-    // 处理 ALU 指令的数据依赖
-    // 10: 数据来自 M 阶段 (上一条指令的 ALU 结果，优先级高)
-    // 01: 数据来自 W 阶段 (上上条指令的写回数据)
-    // 00: 无转发，使用寄存器堆读取值
-    
-    assign forwordAE = ((rsE != 5'b0) & (rsE == writeregM) & regwriteM) ? 2'b10 : 
-                       ((rsE != 5'b0) & (rsE == writeregW) & regwriteW) ? 2'b01 : 
-                        2'b00;
-                        
-    assign forwordBE = ((rtE != 5'b0) & (rtE == writeregM) & regwriteM) ? 2'b10 :
-                       ((rtE != 5'b0) & (rtE == writeregW) & regwriteW) ? 2'b01 :
-                        2'b00;
-
-    // D阶段转发逻辑 (Control Hazard on Branch)
-    // 处理分支指令在 ID 阶段的数据依赖
-    // 10: 数据来自 M 阶段 (上一条指令结果)
-    // 01: 数据来自 W 阶段 (上上条指令结果)
-    
-    assign forwordAD = ((rsD != 5'b0) & (rsD == writeregM) & regwriteM) ? 2'b10 : 
-                       ((rsD != 5'b0) & (rsD == writeregW) & regwriteW) ? 2'b01 : 
-                       2'b00;
-                       
-    assign forwordBD = ((rtD != 5'b0) & (rtD == writeregM) & regwriteM) ? 2'b10 : 
-                       ((rtD != 5'b0) & (rtD == writeregW) & regwriteW) ? 2'b01 : 
-                       2'b00;
-
-    // 流水线暂停 (Stall) 逻辑 
-    wire lwstall, branch_stall, jump_stall, link_stall;
-    
-    // 1. Load-Use 冒险
-    // Load 指令在 E 阶段，且 D 阶段指令需要用到该 Load 的结果作为源操作数
-    assign lwstall = memtoregE & ((rsD == rtE) | (rtD == rtE)) & (rtE != 0);
-    
-    // 2. 分支冒险
-    // 分支指令在 D 阶段，由于需要立即判断条件，如果操作数还没准备好，必须阻塞
-    // 情况A: 前一条指令还在 E 阶段运算 (regwriteE)，结果未产出 -> Stall
-    // 情况B: 前一条指令是 Load 且在 M 阶段 (memtoregM)，结果未读出 -> Stall (必须等它到 W 阶段)
-    assign branch_stall = branchD & (
-        (regwriteE & ((writeregE == rsD) | (writeregE == rtD)) & (writeregE != 0)) |
-        (memtoregM & ((writeregM == rsD) | (writeregM == rtD)) & (writeregM != 0))
+    input wire [4:0] rsD,       //instr2[25:21]（同一时刻rsD和rsE对应先后两条指令的rs字段，并不相同）
+    input wire [4:0] rtD,       //instr2[20:15]
+    input wire [4:0] rsE,       //instr1[25:21]
+    input wire [4:0] rtE,       //instr1[20:15]
+    input wire regwriteE,       //寄存器堆的写使能信号（E、M、W表示excute、memory和writeback阶段）
+    input wire regwriteM,  
+    input wire regwriteW,  
+    input wire memtoregE,       //判断写回寄存器堆的数据是sw的ReadData(0)还是R的ALUOut(1)
+    input wire memtoregM,
+    input wire branchD,         //提前判断分支
+    input wire [4:0] writeregE, //寄存器堆的写地址，连接wa3W
+    input wire [4:0] writeregM,
+    input wire [4:0] writeregW,
+    input wire stall_divE,
+    output [1:0] forwordAE,     //在excute阶段控制mux3选择SrcA（数据冒险）
+    output [1:0] forwordBE,     //在excute阶段控制mux3选择SrcB
+    output forwordAD,     //在decode阶段控制二选一选择regfile rd1出来的数据（控制冒险下的数据冒险）
+    output forwordBD,     //在decode阶段控制二选一选择regfile rd2出来的数据
+    output reg stallF,          //instr fetch级暂停
+    output reg stallD,          //decoder暂停
+    output reg stallE,
+    output reg flushE,          //excute刷新（即插入气泡）
+    output reg flushM
     );
-    
-    // 3. 跳转冒险
-    // JR/JALR 指令需要读取 rs 寄存器，如果存在数据冒险则阻塞
-    assign jump_stall = jump_conflictD;
-    
-    // 4. Link 冒险
-    // 前一条指令是 Link 指令 (如 BGEZAL) 在 E 阶段，当前指令需要读取 $31
-    assign link_stall = linkE & regwriteE & (
-        ((writeregE == rsD) & (rsD != 0)) | 
-        ((writeregE == rtD) & (rtD != 0))
-    );
-    
-    // 最终暂停/清空信号生成 
-    // stall_divE (除法器忙) 具有最高优先级，会导致流水线停顿
-    always @(*) begin
-        // F/D 阶段暂停：存在任何冒险或除法器忙
-        stallF = rst ? 1'b0 : (lwstall | branch_stall | jump_stall | link_stall | stall_divE);
-        stallD = rst ? 1'b0 : (lwstall | branch_stall | jump_stall | link_stall | stall_divE);
-        
-        // E 阶段暂停：仅在除法运算时暂停，保持 ALU 状态
-        stallE = rst ? 1'b0 : stall_divE; 
-        
-        // E 阶段清空 (冲刷)：当前端暂停但不是因为除法时，说明 D 阶段无法发射指令，需向 E 阶段插入气泡
-        flushE = rst ? 1'b0 : (lwstall | branch_stall | jump_stall | link_stall); 
-        
-        // M 阶段清空 (冲刷)：当 E 阶段被除法阻塞时，需向 M 阶段插入气泡
-        flushM = rst ? 1'b0 : stall_divE; 
+//数据前推解决R指令和前两条lw指令的数据冒险
+    /*ALU端口SrcAE的数据可能来自：（注意判断reE!=0，否则读保留寄存器直接输出）
+        寄存器堆（无冒险情况下）：forwordAE=00、SrcAE=RsD
+        数据存储器(lw的数据冒险)：forwordAE=01、SrcAE=ResultW（lw指令写回寄存器堆在MEM阶段，其后第二条指令如需要该数据会受影响）
+        ALUOut（ALU运算的数据冒险）：forwordAE=10、SrcAE=ALUOutM（R型指令写回寄存器堆在WB阶段，其后一条指令如需要该数据都会受影响）
+    */
+    assign forwordAE = ((rsE != 5'b0) & (rsE == writeregM) & regwriteM) ? 2'b10:    //前一条指令是R型，直接将ALUOut传回
+                       ((rsE != 5'b0) & (rsE == writeregW) & regwriteW) ? 2'b01:    //前两条指令是lw
+                        2'b00;
+    assign forwordBE = ((rtE != 5'b0) & (rtE == writeregM) & regwriteM) ? 2'b10:    //SrcBE同SrcAE
+                       ((rtE != 5'b0) & (rtE == writeregW) & regwriteW) ? 2'b01:
+                        2'b00;
+//提前判断分支解决beq后2、3条指令的控制冒险时出现的数据冒险
+    assign forwordAD = ((rsD != 5'b0) & (rsD == writeregE) & regwriteE);            //前一条指令要写回寄存器堆且该数据被beq指令所用
+    assign forwordBD = ((rtD != 5'b0) & (rtD == writeregE) & regwriteE);
+//流水线暂停解决lw后一条指令需要用寄存器堆数据带来的数据冒险、beq需要用前一条指令写回寄存器堆的数据
+    /*lw指令写入寄存器堆的地址为rt，因此下一条指令若要用到rt则需要暂停，即rsD==rtE或rtD==rtE
+      beq指令需要rs、rt号寄存器的数据，若上一条指令要写到该寄存器，则需要暂停流水线
+    */
+    wire lwstall,branch_stall;                                      //流水线暂停信号
+    assign lwstall = (((rsD == rtE) | (rtD == rtE)) & memtoregE);   //判断前一条指令需要对寄存器堆写入(memturegE)并且写入地址rtE与被当前指令用到
+    assign branch_stall=( branchD&regwriteE&((writeregE==rsD)|(writeregE==rtD)) )   //当前指令为branch、上一条指令要写寄存器堆且写的数据当前要用
+                       |( branchD&memtoregM&((writeregM==rsD)|(writeregM==rtD)) );  //当前指令为branch、上2条指令要写寄存器堆且写的数据当前要用
+    always @(*)begin
+        stallF = rst? 1'b0 : (lwstall | branch_stall | stall_divE);      //若被重置则全部清零
+        stallD = rst? 1'b0 : (lwstall | branch_stall | stall_divE);      //lw带来的数据冒险或提前判断分支带来的数据冒险都可以暂停流水线
+        stallE = rst? 1'b0 : stall_divE;
+        flushE = rst? 1'b0 : (lwstall | branch_stall);      //lw/beq下一条已经执行的需要清空
+        flushM = rst? 1'b0 : stall_divE;
     end
 
 endmodule
+

@@ -25,6 +25,12 @@ always @(*) begin
                     `MULTU: alucontrol <= `MULTU_CONTROL;
                     `DIV: alucontrol <= `DIV_CONTROL;
                     `DIVU: alucontrol <= `DIVU_CONTROL;
+                    // ===== 新增4条数据移动指令 =====
+                    `MFHI: alucontrol <= `MFHI_CONTROL;
+                    `MFLO: alucontrol <= `MFLO_CONTROL;
+                    `MTHI: alucontrol <= `MTHI_CONTROL;
+                    `MTLO: alucontrol <= `MTLO_CONTROL;
+                    // 新增完毕
                     default: alucontrol <= 5'b00000;
                 endcase
         end
@@ -34,7 +40,7 @@ always @(*) begin
         `SLTI_OP: alucontrol <= `SLT_CONTROL;
         `SLTIU_OP: alucontrol <= `SLTU_CONTROL;
         `MEM_OP: alucontrol <= `ADD_CONTROL;
-        `USELESS_OP: alucontrol <= 5'b00000;
+        `BEQ_OP: alucontrol <= `SUB_CONTROL;
         default: alucontrol <= 5'b00000;
     endcase
 end
