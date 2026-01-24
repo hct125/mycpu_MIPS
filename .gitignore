@@ -1,8 +1,36 @@
-*.ip_user_files/
+# 忽略 Vivado 项目生成目录
+*.data/
 *.runs/
+*.gen/
+*.srcs/
+*.sdk/
+*.hw/
+*.sim/
 *.cache/
+*.ip_user_files/
+
+# 忽略常见的编译输出和临时文件
+*.o
+*.out
+*.vcd
+*.vvp
 *.log
 *.jou
-*.vcd
-xilinx_ip
-*.sim
+
+# 不忽略所有的 .v 文件（Verilog源码）
+!*.v
+!*.vh
+
+# 不忽略所有的 .sv 文件（SystemVerilog源码）
+!*.sv
+
+# 不忽略所有的 .coe 或 .mif 文件（内存初始化文件）
+!*.coe
+!*.mif
+
+# 不忽略项目的核心文档和脚本
+!README.md
+!*.pdf
+!*.txt
+!*.sh
+!Makefile

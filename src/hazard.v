@@ -19,8 +19,8 @@ module hazard(
     input wire [4:0] writeregW,
     output [1:0] forwordAE,     //在excute阶段控制mux3选择SrcA（数据冒险）
     output [1:0] forwordBE,     //在excute阶段控制mux3选择SrcB
-    output [1:0] forwordAD,     //在decode阶段控制二选一选择regfile rd1出来的数据（控制冒险下的数据冒险）
-    output [1:0] forwordBD,     //在decode阶段控制二选一选择regfile rd2出来的数据
+    output forwordAD,     //在decode阶段控制二选一选择regfile rd1出来的数据（控制冒险下的数据冒险）
+    output forwordBD,     //在decode阶段控制二选一选择regfile rd2出来的数据
     output reg stallF,          //instr fetch级暂停
     output reg stallD,          //decoder暂停
     output reg flushE           //excute读到的流水线需要清空

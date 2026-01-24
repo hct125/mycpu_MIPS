@@ -17,7 +17,8 @@ module datapath(
     input wire memtoregE,
     input wire regwriteE,
     input wire memtoregM,
-	input wire [2:0] alucontrol,
+    input wire sext,
+	input wire [4:0] alucontrol,
     output wire [31:0] instrD_to_controller//从datapath中传出，由于instr必须为D阶段的才能使controller与其匹配。同时instrD受harzard控制，必须从datapath中传出。
     );
     wire [31:0] pc_next;        //pc+4后的下一位pc
@@ -102,7 +103,7 @@ module datapath(
     assign instrD_to_controller = instrD;//从datapath中传出，由于instr必须为D阶段的才能使controller与其匹配。同时instrD受harzard控制，必须从datapath中传出。
     
     //instr低16位偏移地址扩展与左移
-    sign_extend sign_extend(.a(instrD[15:0]),.y(imm_extend));
+    sign_extend sign_extend(.a(instrD[15:0]),.sext(sext),.y(imm_extend));
     shift_2 sl2(.a(imm_extend),.y(imm_sl2));
     //计算branch时PC已经+4了，要还原
     wire [31:0] pc_plus_4D_for_brach;
@@ -136,6 +137,7 @@ module datapath(
     wire D_E_en;  
     assign D_E_en = flushE & pcsrc;
     
+    wire [4:0] saE;
     //D-E数据传输
     flopenrc #(32) r1E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(rd1D),.q(rd1E));
     flopenrc #(32) r2E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(rd2D),.q(rd2E));
@@ -144,6 +146,7 @@ module datapath(
     flopenrc #(32) r5E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(pc_plus_4D),.q(pc_plus_4E));
     flopenrc #(32) r6E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(imm_extend),.q(imm_extendE));
     flopenrc #(5) r7E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(instrD[25:21]),.q(rsE));
+    flopenrc #(5) r8E(.clk(clka),.rst(rst),.en(1'b1),.clear(D_E_en),.d(instrD[10:6]),.q(saE));
     
     //连接regfile的wa3,选择写入结果的地址是rt（lw）还是rd（r-type）
     mux2 #(5) mux_wa3(
@@ -160,7 +163,7 @@ module datapath(
     //alu_srcB
     mux2 #(32) mux_alu_srcb(.a(imm_extendE),.b(mux3_B_result),.s(alusrc),.y(alu_srcB));
     //ALU
-    alu alu(.a(mux3_A_result),.b(alu_srcB),.op(alucontrol),.result(alu_result),.zero(zero));
+    alu alu(.a(mux3_A_result),.b(alu_srcB),.sa(saE),.op(alucontrol),.result(alu_result),.zero(zero));
 
     //E-M数据传输
     flopenrc #(32) r1M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(alu_result),.q(alu_resultM));
