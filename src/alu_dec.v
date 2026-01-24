@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-//根据op码和funct码解码，输出对应的alu control信号。吸取实验三教训，采用assign赋值
+//根据op码和funct码解码，输出对应的alu control信号
 `include "defines2.vh"
 module alu_dec(
     input wire [5:0] funct,
@@ -21,6 +21,8 @@ always @(*) begin
                     `SLL: alucontrol <= `SLL_CONTROL;
                     `AND: alucontrol <= `AND_CONTROL; 
                     `OR: alucontrol <= `OR_CONTROL;
+                    `MULT: alucontrol <= `MULT_CONTROL;
+                    `MULTU: alucontrol <= `MULTU_CONTROL;
                     default: alucontrol <= 5'b00000;
                 endcase
         end

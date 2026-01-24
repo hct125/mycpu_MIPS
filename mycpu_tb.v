@@ -3,8 +3,8 @@
 module tb_top();
 
 reg clk, resetn;
+reg [31:0] alu_resultM;
 
-//iverilog 波形文件生成
 initial begin
 $dumpfile("wave.vcd"); // 指定波形文件为dump.vcd
 $dumpvars(0, tb_top); // 记录tb_top模块下所有信号
@@ -17,14 +17,21 @@ begin
     #100;
     resetn = 1'b1;
 
-    #10000;
+    #550;
     $finish;
 end
 always #5 clk=~clk;
 
+always@(posedge clk)
+begin
+    if (resetn)
+        $display("alu_resultM=%h",alu_resultM);
+end
+
 top soc(
     .clk(clk),
-    .resetn(resetn)
+    .resetn(resetn),
+    .alu_resultM(alu_resultM)
 );
 
 endmodule

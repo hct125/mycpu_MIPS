@@ -6,22 +6,34 @@ module alu(
     input [31:0] b, //B端口
     input [4:0] sa, //移位量
     input [4:0] op, //运算符控制码
-    output reg [31:0] result,  //结果
+    output reg [31:0] result,  //结果，或者乘法32位结果
+    output reg [31:0] hi, //乘法高位结果
+    output reg overflow, //溢出标志
     output wire zero
     );
 
     always @(*) begin
+        overflow = 1'b0;
+        hi = 32'b0;
         case(op)
-            `ADD_CONTROL: result = a + b;
+            `ADD_CONTROL: begin
+                result = a + b;
+                overflow = (a[31] == b[31]) && (result[31] != a[31]);
+            end
             `ADDU_CONTROL: result = a + b;
-            `SUB_CONTROL: result = a - b;
+            `SUB_CONTROL: begin
+                result = a - b;
+                overflow = (a[31] != b[31]) && (result[31] != a[31]);
+            end
             `SUBU_CONTROL: result = a - b;
             `AND_CONTROL: result = a & b;
             `OR_CONTROL: result = a | b;
             `SLL_CONTROL: result = b << sa;
             `SLT_CONTROL: result = $signed(a) < $signed(b) ? 1 : 0;
             `SLTU_CONTROL: result = a < b ? 1 : 0;
-            default: result = 0;
+            `MULT_CONTROL: {hi, result} = $signed({{32{a[31]}}, a}) * $signed({{32{b[31]}}, b});  //有符号乘法，高位符号扩展
+            `MULTU_CONTROL: {hi, result} = {32'b0, a} * {32'b0, b};
+            default: result = 32'b0;
         endcase
     end
     assign zero = (result == 32'b0);

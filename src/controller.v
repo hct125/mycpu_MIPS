@@ -47,7 +47,7 @@ module controller(
     assign regwriteM = sigsM[3];  //传入datapath中的hazard需要
     assign memtoregM = sigsM[1]; //传入datapath中的hazard需要
     
-//流水线寄存器MW间的数据进出：{regwrite,memwrite,memetoreg}
+//流水线寄存器MW间的数据进出：{regwrite,memetoreg}
     wire [1:0] sigsW;
     floprc #(2) r1W(.clk(clka),.rst(rst),.clear(1'b0),.d({sigsM[3],sigsM[1]}),.q(sigsW));
     assign regwrite = sigsW[1];

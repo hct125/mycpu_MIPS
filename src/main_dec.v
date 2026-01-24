@@ -27,6 +27,10 @@ module main_dec(
                 sigs <= 9'b000010001;
                 aluop_reg <= `BEQ_OP;
             end
+            `ORI:begin      //ori
+                sigs <= 9'b010100000;
+                aluop_reg <= `ORI_OP;
+            end
             `ADDI:begin     //addi
                 sigs <= 9'b010100001;
                 aluop_reg <= `ADDI_OP;
@@ -35,10 +39,7 @@ module main_dec(
                 sigs <= 9'b010100001;
                 aluop_reg <= `ADDIU_OP;
             end
-            `ORI:begin      //ori
-                sigs <= 9'b010100000;
-                aluop_reg <= `ORI_OP;
-            end
+
             `SLTI:begin      //slti
                 sigs <= 9'b010100001;
                 aluop_reg <= `SLTI_OP;

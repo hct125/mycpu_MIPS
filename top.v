@@ -1,3 +1,4 @@
+`timescale 1ns / 1ps
 // module top(
 // 	input wire clk,rst,
 // 	output wire[31:0] writedata,dataadr,
@@ -25,7 +26,8 @@
 
 //SoC top
 module top(
-	input clk,resetn
+	input clk,resetn,
+    output [31:0] alu_resultM
 );
 
 //cpu inst sram
@@ -41,6 +43,8 @@ wire [31:0] cpu_data_addr;
 wire [31:0] cpu_data_wdata;
 wire [31:0] cpu_data_rdata;
 
+assign alu_resultM = cpu_data_addr; //输出alu_resultM，方便观察
+
 //cpu
 mycpu_top cpu(
     .clk              (~clk      ),  //相当于对inst_ram和data_ram时钟取反
@@ -54,7 +58,7 @@ mycpu_top cpu(
     
     .data_sram_en     (cpu_data_en   ),
     .data_sram_wen    (cpu_data_wen  ),
-    .data_sram_addr   (cpu_data_addr ),
+    .data_sram_addr   (cpu_data_addr ),   //alu_resultM
     .data_sram_wdata  (cpu_data_wdata),
     .data_sram_rdata  (cpu_data_rdata)
 );

@@ -162,8 +162,13 @@ module datapath(
     
     //alu_srcB
     mux2 #(32) mux_alu_srcb(.a(imm_extendE),.b(mux3_B_result),.s(alusrc),.y(alu_srcB));
+
+    reg overflow_reg;  //溢出标志
+    reg [31:0]HI_reg,LO_reg;       //乘除法结果寄存器
     //ALU
-    alu alu(.a(mux3_A_result),.b(alu_srcB),.sa(saE),.op(alucontrol),.result(alu_result),.zero(zero));
+    alu alu(.a(mux3_A_result),.b(alu_srcB),.sa(saE),.op(alucontrol),.result(alu_result),.hi(HI_reg),.overflow(overflow_reg),.zero(zero));
+    //HI_LO寄存器
+    assign LO_reg = alu_result;
 
     //E-M数据传输
     flopenrc #(32) r1M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(alu_result),.q(alu_resultM));
