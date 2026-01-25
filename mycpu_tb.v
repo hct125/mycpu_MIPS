@@ -11,6 +11,11 @@ module tb_top();
     initial begin
     $dumpfile("wave.vcd"); // 指定波形文件为dump.vcd
     $dumpvars(0, tb_top); // 记录tb_top模块下所有信号
+    $dumpvars(0, tb_top.soc.mips.dp.regfile.rf[0]);
+    $dumpvars(0, tb_top.soc.mips.dp.regfile.rf[1]);
+    $dumpvars(0, tb_top.soc.mips.dp.regfile.rf[2]);
+    $dumpvars(0, tb_top.soc.mips.dp.regfile.rf[3]);
+    $dumpvars(0, tb_top.soc.mips.dp.regfile.rf[4]);//记录寄存器
     end
 
     initial
