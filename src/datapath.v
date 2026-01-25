@@ -16,7 +16,7 @@ module datapath(
     input wire jump,
     input wire branch,
     input wire memwrite,
-    output reg [3:0] ben,
+    output wire [3:0] ben,
     input wire regwriteM,
     input wire memtoregE,
     input wire regwriteE,
@@ -90,7 +90,7 @@ module datapath(
     // M-W间信号
     wire [31:0] alu_resultW;    
     wire [31:0] mem_rdataW;
-    reg [31:0] final_mem_rdata;
+    wire [31:0] final_mem_rdata;
     wire [5:0] opW;     
     wire [4:0] wa3W;            
     
@@ -284,50 +284,21 @@ module datapath(
     
     assign stall_divE = start_div & ~div_ready;
 
-    // HI/LO 寄存器
-    reg [31:0] hi, lo;
-    
-    // 修改HI/LO写入逻辑
-    always @(posedge clk) begin
-        if (rst) begin
-            hi <= 0;
-            lo <= 0;
-        end 
-        // 1. 除法写回
-        // 加上 start_div 是为了防止 div_ready 的 X 态干扰
-        else if (start_div && div_ready) begin
-            hi <= div_result[63:32];
-            lo <= div_result[31:0];
-        end 
-        // 2. 只有在流水线不暂停时 (E阶段有效)，才允许执行 E 阶段的指令写 HI/LO
-        else if (~stallE) begin
-            case (alucontrol)
-                `MULT_CONTROL, `MULTU_CONTROL: begin
-                    hi <= mul_result[63:32];
-                    lo <= mul_result[31:0];
-                end
-                `MTHI_CONTROL: begin
-                    hi <= mux3_A_result; // rs 的值
-                end
-                `MTLO_CONTROL: begin
-                    lo <= mux3_A_result; // rs 的值
-                end
-                // 默认保持原值
-                default: begin
-                    hi <= hi;
-                    lo <= lo;
-                end
-            endcase
-        end
-    end
-    reg [31:0] alu_out_final; 
-    always @(*) begin
-        case (alucontrol)
-            `MFHI_CONTROL: alu_out_final = hi;
-            `MFLO_CONTROL: alu_out_final = lo;
-            default:       alu_out_final = alu_result;
-        endcase
-    end
+    // HI/LO 寄存器逻辑
+    wire [31:0] alu_out_final;
+    hilo_reg u_hilo(
+        .clk(clk),
+        .rst(rst),
+        .start_div(start_div),
+        .div_ready(div_ready),
+        .stallE(stallE),
+        .alucontrol(alucontrol),
+        .div_result(div_result),
+        .mul_result(mul_result),
+        .rs_data(mux3_A_result),
+        .alu_result(alu_result),
+        .alu_out_final(alu_out_final)
+    );
 
     // E-M数据传输
     // 使用 flushM 清空流水线寄存器 (插入气泡)
@@ -341,29 +312,12 @@ module datapath(
     // 插入完毕
     
     // 访存添加：写使能生成逻辑
-    always @(*) begin
-        if (memwrite) begin 
-            case (opM)
-                `SB: begin // Store Byte
-                    case (alu_resultM[1:0])
-                        2'b00: ben = 4'b0001;
-                        2'b01: ben = 4'b0010;
-                        2'b10: ben = 4'b0100;
-                        2'b11: ben = 4'b1000;
-                    endcase
-                end
-                `SH: begin // Store Halfword
-                    case (alu_resultM[1])
-                        1'b0: ben = 4'b0011;
-                        1'b1: ben = 4'b1100;
-                    endcase
-                end
-                default: ben = 4'b1111; // SW 指令
-            endcase
-        end else begin
-            ben = 4'b0000; 
-        end
-    end
+    mem_write_ctrl u_mem_write(
+        .memwrite(memwrite),
+        .opM(opM),
+        .addr_low(alu_resultM[1:0]),
+        .ben(ben)
+    );
 
     flopenrc #(32) r4M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(pc_branch),.q(pc_branchM));
     flopenrc #(5) r5M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(wa3),.q(wa3M));
@@ -380,40 +334,12 @@ module datapath(
     // 访存插入：传递指令其三（M到W）
     flopenrc #(6) r_opW(.clk(clk),.rst(rst),.en(1'b1),.clear(1'b0),.d(opM),.q(opW));
     
-    wire [1:0] byte_offset = alu_resultW[1:0]; 
-    always @(*) begin
-        case(opW)
-            `LB: begin // Signed
-                case(byte_offset)
-                    2'b00: final_mem_rdata = {{24{mem_rdataW[7]}},   mem_rdataW[7:0]};
-                    2'b01: final_mem_rdata = {{24{mem_rdataW[15]}},  mem_rdataW[15:8]};
-                    2'b10: final_mem_rdata = {{24{mem_rdataW[23]}},  mem_rdataW[23:16]};
-                    2'b11: final_mem_rdata = {{24{mem_rdataW[31]}},  mem_rdataW[31:24]};
-                endcase
-            end
-            `LBU: begin // Unsigned
-                case(byte_offset)
-                    2'b00: final_mem_rdata = {24'b0, mem_rdataW[7:0]};
-                    2'b01: final_mem_rdata = {24'b0, mem_rdataW[15:8]};
-                    2'b10: final_mem_rdata = {24'b0, mem_rdataW[23:16]};
-                    2'b11: final_mem_rdata = {24'b0, mem_rdataW[31:24]};
-                endcase
-            end
-            `LH: begin // Signed
-                case(byte_offset[1])
-                    1'b0: final_mem_rdata = {{16{mem_rdataW[15]}}, mem_rdataW[15:0]};
-                    1'b1: final_mem_rdata = {{16{mem_rdataW[31]}}, mem_rdataW[31:16]};
-                endcase
-            end
-            `LHU: begin // Unsigned
-                case(byte_offset[1])
-                    1'b0: final_mem_rdata = {16'b0, mem_rdataW[15:0]};
-                    1'b1: final_mem_rdata = {16'b0, mem_rdataW[31:16]};
-                endcase
-            end
-            default: final_mem_rdata = mem_rdataW; 
-        endcase
-    end
+    mem_read_ctrl u_mem_read(
+        .opW(opW),
+        .addr_low(alu_resultW[1:0]),
+        .mem_rdataW(mem_rdataW),
+        .final_mem_rdata(final_mem_rdata)
+    );
     
     assign wd3 = resultW;
     
