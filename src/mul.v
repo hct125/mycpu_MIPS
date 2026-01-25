@@ -5,7 +5,7 @@ module mul(
     input [31:0] a,
     input [31:0] b,
     input [4:0] op, //运算符控制码
-    output reg [63:0] result
+    output [63:0] result
     );
 
     reg [63:0] result_reg;

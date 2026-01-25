@@ -26,7 +26,15 @@ module alu(
             `SUBU_CONTROL: result = a - b;
             `AND_CONTROL: result = a & b;
             `OR_CONTROL: result = a | b;
+            `XOR_CONTROL: result = a ^ b;
+            `NOR_CONTROL: result = ~(a | b);
+            `LUI_CONTROL: result = b << 16;
             `SLL_CONTROL: result = b << sa;
+            `SRL_CONTROL: result = b >> sa;
+            `SRA_CONTROL: result = $signed(b) >>> sa;
+            `SLLV_CONTROL: result = b << a[4:0];
+            `SRLV_CONTROL: result = b >> a[4:0];
+            `SRAV_CONTROL: result = $signed(b) >>> a[4:0];
             `SLT_CONTROL: result = $signed(a) < $signed(b) ? 1 : 0;
             `SLTU_CONTROL: result = a < b ? 1 : 0;
             

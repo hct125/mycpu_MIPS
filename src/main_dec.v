@@ -54,6 +54,16 @@ module main_dec(
                 sigs <= 9'b000101011; // {0,0,0,1,0,1,0,1,1} -> alusrc, memwrite, ram_en, sext
                 aluop <= `MEM_OP;
             end
+
+            `LB, `LBU, `LH, `LHU: begin // lb, lbu, lh, lhu
+                sigs <= 9'b010100111; // Same as LW
+                aluop <= `MEM_OP;
+            end
+
+            `SB, `SH: begin     // sb, sh
+                sigs <= 9'b000101011; // Same as SW
+                aluop <= `MEM_OP;
+            end
             
             `BEQ: begin     // beq
                 sigs <= 9'b000010001; // {0,0,0,0,1,0,0,0,1} -> branch, sext
@@ -109,6 +119,21 @@ module main_dec(
             `ORI: begin     // ori (无符号扩展)
                 sigs <= 9'b010100000; // sext=0
                 aluop <= `ORI_OP;
+            end
+            
+            `ANDI: begin     // andi (无符号扩展)
+                sigs <= 9'b010100000; // sext=0
+                aluop <= `ANDI_OP;
+            end
+
+            `XORI: begin     // xori (无符号扩展)
+                sigs <= 9'b010100000; // sext=0
+                aluop <= `XORI_OP;
+            end
+
+            `LUI: begin     // lui
+                sigs <= 9'b010100000; // sext=0
+                aluop <= `LUI_OP;
             end
             
             `SLTI: begin    // slti

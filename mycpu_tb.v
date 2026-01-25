@@ -42,8 +42,8 @@ module tb_top();
         .alu_result(alu_result),
         .instr(instr),
         .ascii(ascii),
-        .readdata(readdata),
-        .writedata(writedata)
+        .mem_rdata(readdata),
+        .mem_wdata(writedata)
     );
 
 endmodule

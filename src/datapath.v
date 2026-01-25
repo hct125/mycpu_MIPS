@@ -15,6 +15,8 @@ module datapath(
     input wire regwrite,
     input wire jump,
     input wire branch,
+    input wire memwrite,
+    output reg [3:0] ben,
     input wire regwriteM,
     input wire memtoregE,
     input wire regwriteE,
@@ -64,6 +66,7 @@ module datapath(
     
     // F-D间信号
     wire [31:0] instrD;
+    wire [5:0] opD = instrD[31:26];
     wire [31:0] pc_plus_4D;
     
     // D-E间信号
@@ -71,6 +74,7 @@ module datapath(
     wire [31:0] rd2E;
     wire [31:0] pc_plus_4E;
     wire [31:0] imm_extendE;
+    wire [5:0] opE;
     wire [4:0] rsE;             // instr[25:21]
     wire [4:0] rtE;             // instr[20:16]
     wire [4:0] rdE;             // instr[15:11]
@@ -85,7 +89,9 @@ module datapath(
     
     // M-W间信号
     wire [31:0] alu_resultW;    
-    wire [31:0] mem_rdataW;     
+    wire [31:0] mem_rdataW;
+    reg [31:0] final_mem_rdata;
+    wire [5:0] opW;     
     wire [4:0] wa3W;            
     
     // 数据前推控制器
@@ -163,9 +169,6 @@ module datapath(
     );
     
     // Branch Target Calculation
-    // Arithmetic logic: (PC+4 of D) - 4 + offset<<2?
-    // Standard MIPS: PC_Branch = (PC+4_of_this_instr) + offset<<2.
-    // instrD's PC+4 is pc_plus_4D.
     shift_2 sl2(.a(imm_extend),.y(imm_sl2));
     adder pc_branch_module(.a(pc_plus_4D),.b(imm_sl2),.y(pc_branch));
     
@@ -187,7 +190,7 @@ module datapath(
     
     // W阶段最终结果（用于转发）：Link指令优先返回PC+8
     wire [31:0] resultW;
-    assign resultW = linkW ? pc_plus_8W : (memtoreg ? mem_rdataW : alu_resultW);
+    assign resultW = linkW ? pc_plus_8W : (memtoreg ? final_mem_rdata : alu_resultW);
     
     // D阶段转发选择：优先M阶段(2'b10)，其次W阶段(2'b01)
     mux3 #(32) mux_rd1D_forward(.d0(rd1D),.d1(resultW),.d2(realresultM),.s(forwordAD),.y(rd1D_forwarded));
@@ -209,6 +212,9 @@ module datapath(
     flopenrc #(5) r7E(.clk(clk),.rst(rst),.en(D_E_en),.clear(D_E_clear),.d(instrD[25:21]),.q(rsE));
     // Valid for Arithmetic (Shift operations)
     flopenrc #(5) r8E(.clk(clk),.rst(rst),.en(D_E_en),.clear(D_E_clear),.d(instrD[10:6]),.q(saE));
+
+    // 访存插入：传递指令其一（D到E） 
+    flopenrc #(6) r_opE(.clk(clk),.rst(rst),.en(D_E_en),.clear(D_E_clear),.d(opD),.q(opE));
 
     // PC+8计算（用于Link指令）
     assign pc_plus_8E = pc_plus_4E + 32'd4;
@@ -280,24 +286,85 @@ module datapath(
 
     // HI/LO 寄存器
     reg [31:0] hi, lo;
+    
+    // 修改HI/LO写入逻辑
     always @(posedge clk) begin
         if (rst) begin
             hi <= 0;
             lo <= 0;
-        end else if (div_ready) begin
+        end 
+        // 1. 除法写回
+        // 加上 start_div 是为了防止 div_ready 的 X 态干扰
+        else if (start_div && div_ready) begin
             hi <= div_result[63:32];
             lo <= div_result[31:0];
-        end else if ((alucontrol == `MULT_CONTROL) || (alucontrol == `MULTU_CONTROL)) begin
-            hi <= mul_result[63:32];
-            lo <= mul_result[31:0];
+        end 
+        // 2. 只有在流水线不暂停时 (E阶段有效)，才允许执行 E 阶段的指令写 HI/LO
+        else if (~stallE) begin
+            case (alucontrol)
+                `MULT_CONTROL, `MULTU_CONTROL: begin
+                    hi <= mul_result[63:32];
+                    lo <= mul_result[31:0];
+                end
+                `MTHI_CONTROL: begin
+                    hi <= mux3_A_result; // rs 的值
+                end
+                `MTLO_CONTROL: begin
+                    lo <= mux3_A_result; // rs 的值
+                end
+                // 默认保持原值
+                default: begin
+                    hi <= hi;
+                    lo <= lo;
+                end
+            endcase
         end
+    end
+    reg [31:0] alu_out_final; 
+    always @(*) begin
+        case (alucontrol)
+            `MFHI_CONTROL: alu_out_final = hi;
+            `MFLO_CONTROL: alu_out_final = lo;
+            default:       alu_out_final = alu_result;
+        endcase
     end
 
     // E-M数据传输
     // 使用 flushM 清空流水线寄存器 (插入气泡)
-    flopenrc #(32) r1M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(alu_result),.q(alu_resultM));
+    flopenrc #(32) r1M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(alu_out_final),.q(alu_resultM));
     flopenrc #(1) r2M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(zero),.q(zeroM));
     flopenrc #(32) r3M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(mux3_B_result),.q(writedataM));
+
+    // 访存插入：传递指令其二（E到M）
+    wire [5:0] opM;
+    flopenrc #(6) r_opM(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(opE),.q(opM));
+    // 插入完毕
+    
+    // 访存添加：写使能生成逻辑
+    always @(*) begin
+        if (memwrite) begin 
+            case (opM)
+                `SB: begin // Store Byte
+                    case (alu_resultM[1:0])
+                        2'b00: ben = 4'b0001;
+                        2'b01: ben = 4'b0010;
+                        2'b10: ben = 4'b0100;
+                        2'b11: ben = 4'b1000;
+                    endcase
+                end
+                `SH: begin // Store Halfword
+                    case (alu_resultM[1])
+                        1'b0: ben = 4'b0011;
+                        1'b1: ben = 4'b1100;
+                    endcase
+                end
+                default: ben = 4'b1111; // SW 指令
+            endcase
+        end else begin
+            ben = 4'b0000; 
+        end
+    end
+
     flopenrc #(32) r4M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(pc_branch),.q(pc_branchM));
     flopenrc #(5) r5M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(wa3),.q(wa3M));
     // EM阶段传递PC+8 (HEAD Link Support)
@@ -309,6 +376,44 @@ module datapath(
     flopenrc #(5) r3W(.clk(clk),.rst(rst),.en(1'b1),.clear(1'b0),.d(wa3M),.q(wa3W));
     // MW阶段传递PC+8 (HEAD Link Support)
     flopenrc #(32) r4W(.clk(clk),.rst(rst),.en(1'b1),.clear(1'b0),.d(pc_plus_8M),.q(pc_plus_8W));
+    
+    // 访存插入：传递指令其三（M到W）
+    flopenrc #(6) r_opW(.clk(clk),.rst(rst),.en(1'b1),.clear(1'b0),.d(opM),.q(opW));
+    
+    wire [1:0] byte_offset = alu_resultW[1:0]; 
+    always @(*) begin
+        case(opW)
+            `LB: begin // Signed
+                case(byte_offset)
+                    2'b00: final_mem_rdata = {{24{mem_rdataW[7]}},   mem_rdataW[7:0]};
+                    2'b01: final_mem_rdata = {{24{mem_rdataW[15]}},  mem_rdataW[15:8]};
+                    2'b10: final_mem_rdata = {{24{mem_rdataW[23]}},  mem_rdataW[23:16]};
+                    2'b11: final_mem_rdata = {{24{mem_rdataW[31]}},  mem_rdataW[31:24]};
+                endcase
+            end
+            `LBU: begin // Unsigned
+                case(byte_offset)
+                    2'b00: final_mem_rdata = {24'b0, mem_rdataW[7:0]};
+                    2'b01: final_mem_rdata = {24'b0, mem_rdataW[15:8]};
+                    2'b10: final_mem_rdata = {24'b0, mem_rdataW[23:16]};
+                    2'b11: final_mem_rdata = {24'b0, mem_rdataW[31:24]};
+                endcase
+            end
+            `LH: begin // Signed
+                case(byte_offset[1])
+                    1'b0: final_mem_rdata = {{16{mem_rdataW[15]}}, mem_rdataW[15:0]};
+                    1'b1: final_mem_rdata = {{16{mem_rdataW[31]}}, mem_rdataW[31:16]};
+                endcase
+            end
+            `LHU: begin // Unsigned
+                case(byte_offset[1])
+                    1'b0: final_mem_rdata = {16'b0, mem_rdataW[15:0]};
+                    1'b1: final_mem_rdata = {16'b0, mem_rdataW[31:16]};
+                endcase
+            end
+            default: final_mem_rdata = mem_rdataW; 
+        endcase
+    end
     
     assign wd3 = resultW;
     

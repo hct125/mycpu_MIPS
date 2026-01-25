@@ -9,13 +9,14 @@ module mips(
     output wire [31:0] pc,	
     output wire inst_ram_ena,
     output wire data_ram_ena,
-    output wire data_ram_wea,
+    output wire [3:0] data_ram_wea,
     output wire [31:0] alu_result,
     output wire [31:0] mem_wdata
 );
 
     wire memtoreg,alusrc,regdst,regwrite,jump,regwriteM,memtoregE,regwriteE,memtoregM,branch;
     wire sext;//符号扩展控制信号
+    wire memwrite_1bit;
     wire [4:0] alucontrol;
     wire [31:0] instrD;
     // Link和Jump相关信号
@@ -39,7 +40,7 @@ module mips(
         .jump(jump),
         .branch(branch),
         .alusrc(alusrc),
-        .memwrite(data_ram_wea),
+        .memwrite(memwrite_1bit),
         .memetoreg(memtoreg),
         .regwrite(regwrite),
         .regdst(regdst),
@@ -71,6 +72,8 @@ module mips(
         .regwrite(regwrite),
         .jump(jump),
         .branch(branch),
+        .memwrite(memwrite_1bit),
+        .ben(data_ram_wea),
         .regwriteM(regwriteM),
         .memtoregE(memtoregE),
         .regwriteE(regwriteE),

@@ -19,16 +19,31 @@ always @(*) begin
                     `SLT: alucontrol <= `SLT_CONTROL;
                     `SLTU: alucontrol <= `SLTU_CONTROL;
                     `SLL: alucontrol <= `SLL_CONTROL;
+                    `SRL: alucontrol <= `SRL_CONTROL; 
+                    `SRA: alucontrol <= `SRA_CONTROL; 
+                    `SLLV: alucontrol <= `SLLV_CONTROL; 
+                    `SRLV: alucontrol <= `SRLV_CONTROL; 
+                    `SRAV: alucontrol <= `SRAV_CONTROL; 
                     `AND: alucontrol <= `AND_CONTROL; 
                     `OR: alucontrol <= `OR_CONTROL;
+                    `XOR: alucontrol <= `XOR_CONTROL; 
+                    `NOR: alucontrol <= `NOR_CONTROL;
                     `MULT: alucontrol <= `MULT_CONTROL;
                     `MULTU: alucontrol <= `MULTU_CONTROL;
                     `DIV: alucontrol <= `DIV_CONTROL;
                     `DIVU: alucontrol <= `DIVU_CONTROL;
+                    // 4条数据移动指令
+                    `MFHI: alucontrol <= `MFHI_CONTROL;
+                    `MFLO: alucontrol <= `MFLO_CONTROL;
+                    `MTHI: alucontrol <= `MTHI_CONTROL;
+                    `MTLO: alucontrol <= `MTLO_CONTROL;
                     default: alucontrol <= 5'b00000;
                 endcase
         end
         `ORI_OP: alucontrol <= `OR_CONTROL;
+        `ANDI_OP: alucontrol <= `AND_CONTROL;
+        `XORI_OP: alucontrol <= `XOR_CONTROL;
+        `LUI_OP: alucontrol <= `LUI_CONTROL;
         `ADDI_OP: alucontrol <= `ADD_CONTROL;
         `ADDIU_OP: alucontrol <= `ADDU_CONTROL;
         `SLTI_OP: alucontrol <= `SLT_CONTROL;
