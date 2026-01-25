@@ -1,143 +1,142 @@
 `timescale 1ns / 1ps
-/* Main Decoder - 主译码器
-   功能：根据op, rt, funct 解码出jump, regwrite, regdst等控制信号和aluop
-   兼容性：支持 Arithmetic分支的算术指令集 + HEAD分支的复杂跳转/分支指令
-   Sigs宽度：9位 [jump, regwrite, regdst, alusrc, branch, memwrite, memtoreg, data_ram_ena, sext]
-*/
-`include "defines2.vh"
+// Main Decoder - 主译码器
+// sigs: {jump, regwrite, regdst, alusrc, branch, memwrite, memtoreg, data_ram_ena}
+// 支持逻辑运算指令（AND/ANDI/OR/ORI/XOR/XORI/NOR/LUI）和移位指令（SLL/SRL/SRA/SLLV/SRLV/SRAV）
 
 module main_dec(
     input wire [5:0] op,
-    input wire [4:0] rt,        // 用于REGIMM指令区分 BLTZ/BGEZ/BLTZAL/BGEZAL
-    input wire [5:0] funct,     // 用于R型指令区分 JR/JALR
-    output reg [8:0] sigs,      // {jump, regwrite, regdst, alusrc, branch, memwrite, memtoreg, data_ram_ena, sext}
-    output reg [3:0] aluop,     // 4位 ALU 操作码
-    output reg jal,             // 选择写$31
-    output reg link,            // 选择写PC+8
-    output reg jr               // 寄存器跳转
+    input wire [4:0] rt,        // 用于BRANCHS指令区分BLTZ/BGEZ/BLTZAL/BGEZAL
+    input wire [5:0] funct,     // 用于R型指令区分JR/JALR
+    output reg [7:0]sigs,       // {jump, regwrite, regdst, alusrc, branch, memwrite, memtoreg, data_ram_ena}
+    output wire [2:0] aluop,    // 扩展到3位
+    output wire jal,            // 选择写$31
+    output wire link,           // 选择写PC+8
+    output wire jr,             // 寄存器跳转
+    output wire zero_ext        // 零扩展选择（用于ANDI/ORI/XORI/LUI）
 );
-
+    reg [2:0] aluop_reg;        // 扩展到3位
+    reg jal_reg, link_reg, jr_reg;
+    reg zero_ext_reg;
+    assign aluop = aluop_reg;
+    assign jal = jal_reg;
+    assign link = link_reg;
+    assign jr = jr_reg;
+    assign zero_ext = zero_ext_reg;
+    
     always@(*)  begin 
         // 默认值
-        jal <= 1'b0;
-        link <= 1'b0;
-        jr <= 1'b0;
+        jal_reg <= 1'b0;
+        link_reg <= 1'b0;
+        jr_reg <= 1'b0;
+        zero_ext_reg <= 1'b0;   // 默认符号扩展
         
         case(op)
-            `R_TYPE: begin
+            6'b000000:begin     //R-TYPE (包含逻辑运算和移位指令)
                 case(funct)
-                    `JR: begin // JR
-                        sigs <= 9'b100000000;
-                        aluop <= `USELESS_OP;
-                        jr <= 1'b1;
+                    6'b001000: begin // JR
+                        sigs <= 8'b10000000;
+                        aluop_reg <= 3'b000;
+                        jr_reg <= 1'b1;
                     end
-                    `JALR: begin // JALR - 写入rd而不是$31
-                        sigs <= 9'b111000000; // regdst=1 选择rd
-                        aluop <= `USELESS_OP;
-                        jal <= 1'b0;      // 不选择$31！JALR写rd
-                        link <= 1'b1;     // 写PC+8
-                        jr <= 1'b1;       // 寄存器跳转
+                    6'b001001: begin // JALR - 写入rd而不是$31
+                        sigs <= 8'b11100000;  // regdst=1 选择rd
+                        aluop_reg <= 3'b000;
+                        jal_reg <= 1'b0;      // 不选择$31！JALR写rd
+                        link_reg <= 1'b1;     // 写PC+8
+                        jr_reg <= 1'b1;       // 寄存器跳转
                     end
-                    default: begin   // 普通R型 (ADD, SUB, SLT, DIV等)
-                        sigs <= 9'b011000001;
-                        aluop <= `R_TYPE_OP;
+                    default: begin   // 其他R型（包含AND/OR/XOR/NOR/SLL/SRL/SRA/SLLV/SRLV/SRAV等）
+                        sigs <= 8'b01100000;  // regwrite=1, regdst=1(写rd)
+                        aluop_reg <= 3'b010;  // R-TYPE
                     end
                 endcase
             end
-            
-            `LW: begin     // lw
-                sigs <= 9'b010100111; // {0,1,0,1,0,0,1,1,1} -> regwrite, alusrc, memtoreg, ram_en, sext
-                aluop <= `MEM_OP;
+            6'b100011:begin     //lw
+                sigs <= 8'b01010011;
+                aluop_reg <= 3'b000;  // ADD
             end
-            
-            `SW: begin     // sw
-                sigs <= 9'b000101011; // {0,0,0,1,0,1,0,1,1} -> alusrc, memwrite, ram_en, sext
-                aluop <= `MEM_OP;
+            6'b101011:begin     //sw
+                sigs <= 8'b00010101;
+                aluop_reg <= 3'b000;  // ADD
             end
-            
-            `BEQ: begin     // beq
-                sigs <= 9'b000010001; // {0,0,0,0,1,0,0,0,1} -> branch, sext
-                aluop <= `USELESS_OP;
+            6'b000100:begin     //beq
+                sigs <= 8'b00001000;
+                aluop_reg <= 3'b110;  // 分支指令用SUB
             end
-            
-            `BNE: begin     // bne
-                sigs <= 9'b000010001; 
-                aluop <= `USELESS_OP; // 分支判定是在 D 阶段,ALU 计算出的结果实际上是被丢弃的
+            6'b000101:begin     //bne
+                sigs <= 8'b00001000;
+                aluop_reg <= 3'b110;
             end
-            
-            `BLEZ: begin    // blez
-                sigs <= 9'b000010001;
-                aluop <= `USELESS_OP;
+            6'b000110:begin     //blez
+                sigs <= 8'b00001000;
+                aluop_reg <= 3'b110;
             end
-            
-            `BGTZ: begin    // bgtz
-                sigs <= 9'b000010001;
-                aluop <= `USELESS_OP;
+            6'b000111:begin     //bgtz
+                sigs <= 8'b00001000;
+                aluop_reg <= 3'b110;
             end
-            
-            `REGIMM_INST: begin // REGIMM (BLTZ, BGEZ, BLTZAL, BGEZAL)
+            6'b000001:begin     //BRANCHS (BLTZ, BGEZ, BLTZAL, BGEZAL)
                 case(rt)
-                    `BLTZ, `BGEZ: begin 
-                        sigs <= 9'b000010001;
-                        aluop <= `USELESS_OP;
+                    5'b00000, 5'b00001: begin // BLTZ, BGEZ
+                        sigs <= 8'b00001000;
+                        aluop_reg <= 3'b110;
                     end
-                    `BLTZAL, `BGEZAL: begin
-                        // 既是分支又是跳转链接
-                        // 需要写寄存器(link)
-                        sigs <= 9'b010010001; // regwrite=1, branch=1, sext=1
-                        aluop <= `USELESS_OP;
-                        jal <= 1'b1;  // 写$31
-                        link <= 1'b1; // 写PC+8
+                    5'b10000, 5'b10001: begin // BLTZAL, BGEZAL
+                        sigs <= 8'b10001000;
+                        aluop_reg <= 3'b110;
+                        jal_reg <= 1'b1;
+                        link_reg <= 1'b1;
                     end
                     default: begin
-                        sigs <= 9'b000000000;
-                        aluop <= `USELESS_OP;
+                        sigs <= 8'b00000000;
+                        aluop_reg <= 3'b000;
                     end
                 endcase
             end
-
-            `ADDI: begin    // addi
-                sigs <= 9'b010100001; // regwrite, alusrc, sext
-                aluop <= `ADDI_OP;
+            6'b001000:begin     //addi
+                sigs <= 8'b01010000;
+                aluop_reg <= 3'b000;  // ADD
             end
-            
-            `ADDIU: begin   // addiu
-                sigs <= 9'b010100001;
-                aluop <= `ADDIU_OP;
+            6'b001001:begin     //addiu
+                sigs <= 8'b01010000;
+                aluop_reg <= 3'b000;  // ADD
             end
-            
-            `ORI: begin     // ori (无符号扩展)
-                sigs <= 9'b010100000; // sext=0
-                aluop <= `ORI_OP;
+            // ========== 逻辑运算I型指令（新增）==========
+            6'b001100:begin     //andi (零扩展)
+                sigs <= 8'b01010000;  // regwrite=1, regdst=0(rt), alusrc=1(立即数)
+                aluop_reg <= 3'b011;  // AND
+                zero_ext_reg <= 1'b1; // 零扩展
             end
-            
-            `SLTI: begin    // slti
-                sigs <= 9'b010100001;
-                aluop <= `SLTI_OP;
+            6'b001101:begin     //ori (零扩展)
+                sigs <= 8'b01010000;
+                aluop_reg <= 3'b001;  // OR
+                zero_ext_reg <= 1'b1; // 零扩展
             end
-            
-            `SLTIU: begin   // sltiu
-                sigs <= 9'b010100001;
-                aluop <= `SLTIU_OP;
+            6'b001110:begin     //xori (零扩展)
+                sigs <= 8'b01010000;
+                aluop_reg <= 3'b100;  // XOR
+                zero_ext_reg <= 1'b1; // 零扩展
             end
-            
-            `J: begin       // j
-                sigs <= 9'b100000001; // jump
-                aluop <= `USELESS_OP;
+            6'b001111:begin     //lui (立即数放高16位)
+                sigs <= 8'b01010000;  // regwrite=1, regdst=0(rt), alusrc=1(立即数)
+                aluop_reg <= 3'b101;  // LUI
+                zero_ext_reg <= 1'b1; // 零扩展（LUI不关心低16位）
             end
-            
-            `JAL: begin     // jal
-                sigs <= 9'b110000001; // jump, regwrite
-                aluop <= `USELESS_OP; // ALU不需要做操作，地址计算在ID级
-                jal <= 1'b1;
-                link <= 1'b1;
+            // ========== 跳转指令 ==========
+            6'b000010:begin     //j
+                sigs <= 8'b10000000;
+                aluop_reg <= 3'b000;
             end
-            
-            default: begin
-                sigs <= 9'b000000000;
-                aluop <= `USELESS_OP;
+            6'b000011:begin     //jal
+                sigs <= 8'b11000000;
+                aluop_reg <= 3'b000;
+                jal_reg <= 1'b1;
+                link_reg <= 1'b1;
+            end
+            default:begin
+                sigs <= 8'b00000000;
+                aluop_reg <= 3'b000;
             end
         endcase
     end
 endmodule
-

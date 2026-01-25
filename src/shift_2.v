@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-//å·¦ç§»2ä½æ¨¡å—
+//×óÒÆÁ½Î»
 module shift_2(
     input wire [31:0] a,
     output wire [31:0] y

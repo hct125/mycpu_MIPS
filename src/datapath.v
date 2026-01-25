@@ -1,14 +1,13 @@
 `timescale 1ns / 1ps
-`include "defines2.vh"
-// 数据通路模块
+// 数据通路模块 - 支持逻辑运算和移位指令
+
 module datapath(
-    input wire clk,rst,
+    input wire clka,rst,
     input wire [31:0] instr,
-    input wire [31:0] mem_rdata,    // data_ram中读出的数据
+    input wire [31:0] mem_rdata,    //data_ram中读出的数据
     output wire [31:0] pc,
     output wire [31:0] alu_resultM,
     output wire [31:0] writedataM,
-    // Control Signals
     input wire memtoreg,		
     input wire alusrc,
     input wire regdst,
@@ -19,81 +18,89 @@ module datapath(
     input wire memtoregE,
     input wire regwriteE,
     input wire memtoregM,
-    input wire sext,
-    input wire [4:0] alucontrol, // Expanded to 5 bits
-    
-    // Link/Jump Signals (HEAD)
+    input wire [3:0] alucontrol,    // 扩展到4位
+    output wire [31:0] instrD_to_controller,
+    // 新增：Link和Jump相关信号
     input wire jalD,linkD,jrD,
     input wire jalE,linkE,jrE,
     input wire linkM,linkW,
-    
-    // Outputs
-    output wire [31:0] instrD_to_controller,
+    // 新增：零扩展选择信号
+    input wire zero_extD,
+    input wire zero_extE,
+    // 输出stall和flush信号给controller
     output wire stallD_out,
-    output wire flushE_out,
-    output wire stallE,
-    output wire flushM
-);
+    output wire flushE_out
+    );
     
-    wire [31:0] pc_next;        // pc+4后的下一位pc
-    wire [31:0] pc_next_jump;   // 最终PC (Jump/Branch/PC+4)
-    wire [31:0] rd1D;           // regfile输出的rd1
-    wire [31:0] rd2D;           // regfile输出的rd2
-    wire [31:0] imm_extend;     // 立即数扩展结果
-    wire [31:0] alu_result;     // alu计算结果
-    wire [31:0] alu_srcB;       // ALU源B
-    wire [31:0] wd3;            // 写regfile数据
-    wire [4:0] wa3;             // 写regfile的寄存器号
-    wire [31:0] imm_sl2;        // imm_extend左移2位
-    wire [31:0] pc_branch;      // branch分支地址
-    wire [31:0] pc_plus_4;      // pc+4
-    wire [31:0] pc_plus_8E;     // PC+8 (E阶段，用于Link指令)
-    wire [31:0] pc_plus_8M;     // PC+8 (M阶段)
-    wire [31:0] pc_plus_8W;     // PC+8 (W阶段)
-    wire pcsrc;                 // PC分支选择信号
-    wire branch_takenD;         // 分支是否发生
-    wire jumpD;                 // 最终跳转控制 (来自Control或Check)
-    wire jump_conflictD;        // 跳转冲突
-    wire [31:0] pcjumpD;        // 跳转目标地址
-    wire zero;                  // ALU零标志 (Arithmetic legacy)
+    wire [31:0] pc_next;        //pc+4后的下一位pc
+    wire [31:0] pc_next_jump;   //选择pc+4/branch后，再次选择是否jump后的PC值
+    wire [31:0] rd1D;           //regfile输出的rd1
+    wire [31:0] rd2D;           //regfile输出的rd2
+    wire [31:0] imm_extend;     //i型指令16位imm扩展成32位（符号扩展或零扩展）
+    wire [31:0] alu_result;     //alu计算结果
+    wire [31:0] alu_srcB;       //alusec控制得到的alu_srcB
+    wire [31:0] wd3;            //写regfile数据(ReadData / ALUOut / PC+8)
+    wire [4:0] wa3;             //写regfile的寄存器号（rt / rd / $31）
+    wire [31:0] imm_sl2;        //imm_extend左移2位（在branch指令下工作）
+    wire [31:0] pc_branch;      //branch分支地址
+    wire [31:0] pc_plus_4;      //pc+4
+    wire [31:0] pc_plus_8E;     //PC+8 (E阶段，用于Link指令)
+    wire [31:0] pc_plus_8M;     //PC+8 (M阶段)
+    wire [31:0] pc_plus_8W;     //PC+8 (W阶段)
+    wire pcsrc;                 //判断pc 在branch指令下能否执行
+    wire branch_takenD;         //分支条件判断结果
+    wire jumpD;                 //跳转信号（来自jump_control）
+    wire jump_conflictD;        //跳转冲突（JR/JALR的rs有数据冒险）
+    wire [31:0] pcjumpD;        //跳转目标地址（来自jump_control）
+    wire zero;                  //ALU零标志
     wire [31:0] mux3_A_result;
     wire [31:0] mux3_B_result;
     
-    // Hazard Unit Outputs
-    wire stallF, stallD, flushE; // stallE, flushM also generated but outputted
+    // 符号扩展和零扩展
+    wire [31:0] sign_extD_val = {{16{instrD[15]}}, instrD[15:0]};  // 符号扩展
+    wire [31:0] zero_extD_val = {16'b0, instrD[15:0]};             // 零扩展
+    assign imm_extend = zero_extD ? zero_extD_val : sign_extD_val; // 根据zero_extD信号选择
     
-    // F-D间信号
+    // imm左移2位（用于branch地址计算）
+    assign imm_sl2 = {imm_extend[29:0], 2'b00};
+    
+    //F-D间信号
     wire [31:0] instrD;
     wire [31:0] pc_plus_4D;
     
-    // D-E间信号
+    //D-E间信号
     wire [31:0] rd1E;
     wire [31:0] rd2E;
     wire [31:0] pc_plus_4E;
     wire [31:0] imm_extendE;
-    wire [4:0] rsE;             // instr[25:21]
-    wire [4:0] rtE;             // instr[20:16]
-    wire [4:0] rdE;             // instr[15:11]
-    wire [4:0] saE;             // instr[10:6] (Arithmetic for shift)
-    wire [4:0] rtD;             // instrD[20:16]
+    wire [4:0] rsE;             //instr[25:21]，用于hazard模块
+    wire [4:0] rtE;             //filereg回写地址时 rt的地址 传入mux wa3
+    wire [4:0] rdE;             //filereg回写地址时 rd的地址 传入mux wa3
+    wire [4:0] rtD;             //用于branch_check
     assign rtD = instrD[20:16];
+    wire [4:0] shamtD;          //移位量（用于SLL/SRL/SRA）
+    wire [4:0] shamtE;          //E阶段移位量
+    assign shamtD = instrD[10:6];
     
-    // E-M间信号
-    wire [31:0] pc_branchM;     
-    wire [4:0] wa3M;            
+    //E-M间信号
+    wire [31:0] pc_branchM;     //branch指令下pc跳转结果
+    wire [4:0] wa3M;            //选择rd还是rs写回数据的结果
+    
+    //M-W间信号
+    wire [31:0] alu_resultW;    //回写的aluresult，送到选择器去
+    wire [31:0] mem_rdataW;     //Data_ram中读出，送到writeback阶段的选择器
+    wire [4:0] wa3W;            //选择rd还是rs写回数据的结果
     wire zeroM;
     
-    // M-W间信号
-    wire [31:0] alu_resultW;    
-    wire [31:0] mem_rdataW;     
-    wire [4:0] wa3W;            
+    //hazard传出的延迟与刷新信号
+    wire stallF,stallD,flushE;
     
-    // 数据前推控制器
-    wire [1:0] forwordAE, forwordBE;
-    wire [1:0] forwordAD, forwordBD;  
-    wire [31:0] rd1D_forwarded, rd2D_forwarded;
+    //数据前推控制器
+    wire [1:0] forwordAE,forwordBE;
+    wire [1:0] forwordAD,forwordBD;  // 改为2位，支持M和W阶段转发
+    wire [31:0] rd1D_forwarded, rd2D_forwarded;  // D阶段转发后的寄存器值
     
-    // 实例化 branch_check
+    // 分支条件判断模块
     branch_check bc(
         .op(instrD[31:26]),
         .rt(rtD),
@@ -102,76 +109,57 @@ module datapath(
         .branch_taken(branch_takenD)
     );
     
-    // MIPS Jump Logic
+    // 跳转控制模块
     jump_control jc(
         .instrD(instrD),
         .pcplus4D(pc_plus_4D),
         .srcaD(rd1D_forwarded),
         .regwriteE(regwriteE),
         .regwriteM(regwriteM),
-        .writeregE(wa3),         // wa3 (E stage write reg)
+        .writeregE(wa3),
         .writeregM(wa3M),
-        .jumpD(jumpD),           // Output: Actual jump signal (Control + Condition)
-        .jump_conflictD(jump_conflictD), // Output: JR hazard
-        .pcjumpD(pcjumpD)        // Output: Jump Target
+        .jumpD(jumpD),
+        .jump_conflictD(jump_conflictD),
+        .pcjumpD(pcjumpD)
     );
     
-    // PC Source Logic
+    //pcSrc的判断 (使用branch_takenD)
     assign pcsrc = branch & branch_takenD;
-    
-    // Stall/Freeze Logic
-    wire pc_en = ~stallF;
-    wire F_D_en = ~stallD;
-    
-    // PC Muxes
     mux2 #(32) mux_pc_next(
-        .a(pc_branch),          // Branch Target
-        .b(pc_plus_4),          // PC+4
-        .s(pcsrc),              
+        .a(pc_branch),          //branch的跳转
+        .b(pc_plus_4),
+        .s(pcsrc),              //连接pcSrc
         .y(pc_next)  
     );
     
+    //PC跳转 (使用jump_control的输出)
     mux2 #(32) mux_pc_jump(
-        .a(pcjumpD),                 // Jump Target
-        .b(pc_next),                 // Branch/PC+4
-        .s(jumpD & ~jump_conflictD), // Jump if no conflict
+        .a(pcjumpD),    //跳转目标地址（来自jump_control）
+        .b(pc_next),    //PC+4或branch地址
+        .s(jumpD & ~jump_conflictD),  //无冲突时才跳转
         .y(pc_next_jump)  
     );
-
-    // PC Register (StallF)
-    pc pc_module(
-        .clk(clk),
-        .rst(rst),
-        .en(pc_en),
-        .din(pc_next_jump),
-        .q(pc)
-    );
     
+    //PC
+    pc pc_module(.clk(clka),.rst(rst),.en(~stallF),.din(pc_next_jump),.q(pc));
+    
+    //PC+4
     adder pc_plus_4_module(.a(pc),.b(32'h4),.y(pc_plus_4));
     
-    // F->D Register (StallD)
-    flopenrc #(32) r1D(.clk(clk),.rst(rst),.en(F_D_en),.clear(1'b0),.d(instr),.q(instrD));
-    flopenrc #(32) r2D(.clk(clk),.rst(rst),.en(F_D_en),.clear(1'b0),.d(pc_plus_4),.q(pc_plus_4D));
+    //F-D数据传输
+    flopenrc #(32) r1D(.clk(clka),.rst(rst),.en(~stallD),.clear(1'b0),.d(instr),.q(instrD));
+    flopenrc #(32) r2D(.clk(clka),.rst(rst),.en(~stallD),.clear(1'b0),.d(pc_plus_4),.q(pc_plus_4D));
     
     assign instrD_to_controller = instrD;
     
-    // 符号扩展
-    sign_extend ext(
-        .a(instrD[15:0]),
-        .sext(sext),
-        .y(imm_extend)
-    );
+
     
-    // Branch Target Calculation
-    // Arithmetic logic: (PC+4 of D) - 4 + offset<<2?
-    // Standard MIPS: PC_Branch = (PC+4_of_this_instr) + offset<<2.
-    // instrD's PC+4 is pc_plus_4D.
-    shift_2 sl2(.a(imm_extend),.y(imm_sl2));
+    //计算branch目标地址
     adder pc_branch_module(.a(pc_plus_4D),.b(imm_sl2),.y(pc_branch));
     
     //寄存器堆
     regfile regfile(
-        .clk(clk),
+        .clk(clka),
         .we3(regwrite),                 //写使能 
         .ra1(instrD[25:21]),            //读寄存器号1
         .ra2(instrD[20:16]),            //读寄存器号2
@@ -193,145 +181,73 @@ module datapath(
     mux3 #(32) mux_rd1D_forward(.d0(rd1D),.d1(resultW),.d2(realresultM),.s(forwordAD),.y(rd1D_forwarded));
     mux3 #(32) mux_rd2D_forward(.d0(rd2D),.d1(resultW),.d2(realresultM),.s(forwordBD),.y(rd2D_forwarded));
     
-    // D-E Stage Logic
-    wire D_E_en;
-    // Arithmetic: stop updating pipeline registers when DIV is busy
-    assign D_E_en = ~stallE;
-    // Flush E if branch taken or other flush condition
-    wire D_E_clear = flushE; 
-
-    flopenrc #(32) r1E(.clk(clk),.rst(rst),.en(D_E_en),.clear(D_E_clear),.d(rd1D),.q(rd1E));
-    flopenrc #(32) r2E(.clk(clk),.rst(rst),.en(D_E_en),.clear(D_E_clear),.d(rd2D),.q(rd2E));
-    flopenrc #(5) r3E(.clk(clk),.rst(rst),.en(D_E_en),.clear(D_E_clear),.d(instrD[20:16]),.q(rtE));
-    flopenrc #(5) r4E(.clk(clk),.rst(rst),.en(D_E_en),.clear(D_E_clear),.d(instrD[15:11]),.q(rdE));
-    flopenrc #(32) r5E(.clk(clk),.rst(rst),.en(D_E_en),.clear(D_E_clear),.d(pc_plus_4D),.q(pc_plus_4E));
-    flopenrc #(32) r6E(.clk(clk),.rst(rst),.en(D_E_en),.clear(D_E_clear),.d(imm_extend),.q(imm_extendE));
-    flopenrc #(5) r7E(.clk(clk),.rst(rst),.en(D_E_en),.clear(D_E_clear),.d(instrD[25:21]),.q(rsE));
-    // Valid for Arithmetic (Shift operations)
-    flopenrc #(5) r8E(.clk(clk),.rst(rst),.en(D_E_en),.clear(D_E_clear),.d(instrD[10:6]),.q(saE));
-
+    //D-E数据传输
+    flopenrc #(32) r1E(.clk(clka),.rst(rst),.en(~stallD),.clear(flushE),.d(rd1D),.q(rd1E));
+    flopenrc #(32) r2E(.clk(clka),.rst(rst),.en(~stallD),.clear(flushE),.d(rd2D),.q(rd2E));
+    flopenrc #(5) r3E(.clk(clka),.rst(rst),.en(~stallD),.clear(flushE),.d(instrD[20:16]),.q(rtE));
+    flopenrc #(5) r4E(.clk(clka),.rst(rst),.en(~stallD),.clear(flushE),.d(instrD[15:11]),.q(rdE));
+    flopenrc #(32) r5E(.clk(clka),.rst(rst),.en(~stallD),.clear(flushE),.d(pc_plus_4D),.q(pc_plus_4E));
+    flopenrc #(32) r6E(.clk(clka),.rst(rst),.en(~stallD),.clear(flushE),.d(imm_extend),.q(imm_extendE));
+    flopenrc #(5) r7E(.clk(clka),.rst(rst),.en(~stallD),.clear(flushE),.d(instrD[25:21]),.q(rsE));
+    flopenrc #(5) r8E(.clk(clka),.rst(rst),.en(~stallD),.clear(flushE),.d(shamtD),.q(shamtE));  // 移位量流水线
+    
     // PC+8计算（用于Link指令）
     assign pc_plus_8E = pc_plus_4E + 32'd4;
     
     //连接regfile的wa3,选择写入结果的地址是rt（lw）还是rd（r-type）还是$31（Link指令）
+    // mux2是 y = s ? a : b，所以 s=1选a，s=0选b
     wire [4:0] wa3_temp;
     mux2 #(5) mux_wa3_temp(
-        .a(rdE),            //rd的地址 (R型 - regdst=1)
-        .b(rtE),            //rt的地址 (I型 - regdst=0)
+        .a(rdE),            //rd的地址 (R型指令) - regdst=1时选择
+        .b(rtE),            //rt的地址 (I型指令) - regdst=0时选择
         .s(regdst),         
         .y(wa3_temp)
     );
     mux2 #(5) mux_wa3(
-        .a(5'd31),          //$31 (Link指令 - jalE=1)
-        .b(wa3_temp),       
-        .s(jalE),           
+        .a(5'd31),          //$31 (Link指令) - jalE=1时选择
+        .b(wa3_temp),       //rt或rd - jalE=0时选择
+        .s(jalE),           //jalE信号选择$31
         .y(wa3)
     );
     
-    // E阶段转发 wait
-    mux3 #(32) srcA_sel3(.d0(rd1E),.d1(resultW),.d2(realresultM),.s(forwordAE),.y(mux3_A_result));
-    mux3 #(32) srcB_sel3(.d0(rd2E),.d1(resultW),.d2(realresultM),.s(forwordBE),.y(mux3_B_result));
+    // E阶段转发：使用realresultM和resultW
+    mux3 #(32) srcA_sel3(.d0(rd1E),.d1(realresultM),.d2(resultW),.s(forwordAE),.y(mux3_A_result));
+    mux3 #(32) srcB_sel3(.d0(rd2E),.d1(realresultM),.d2(resultW),.s(forwordBE),.y(mux3_B_result));
     
-    // alu_srcB
+    //alu_srcB
     mux2 #(32) mux_alu_srcb(.a(imm_extendE),.b(mux3_B_result),.s(alusrc),.y(alu_srcB));
-
-    wire overflow_wire;   //暂时未使用的溢出信号
     
-    // ALU
-    alu alu(
-        .a(mux3_A_result),
-        .b(alu_srcB),
-        .sa(saE),
-        .op(alucontrol),
-        .result(alu_result),
-        .overflow(overflow_wire),
-        .zero(zero)
-    );
+    //ALU（添加shamt输入用于移位指令）
+    alu alu(.a(mux3_A_result),.b(alu_srcB),.op(alucontrol),.shamt(shamtE),.result(alu_result),.zero(zero));
 
-    // 乘法模块
-    wire [63:0] mul_result;
-    mul u_mul(
-        .a(mux3_A_result),
-        .b(mux3_B_result),
-        .op(alucontrol),
-        .result(mul_result)
-    );
-
-    // 除法模块
-    wire [63:0] div_result;
-    wire div_ready;
-    wire start_div = (alucontrol == `DIV_CONTROL) || (alucontrol == `DIVU_CONTROL);
-    wire signed_div = (alucontrol == `DIV_CONTROL);
-    wire stall_divE; // Local wire needed for hazard connection
-
-    div u_div(
-        .clk(clk),
-        .rst(rst),
-        .signed_div_i(signed_div),
-        .opdata1_i(mux3_A_result),
-        .opdata2_i(mux3_B_result),
-        .start_i(start_div),
-        .annul_i(1'b0),
-        .result_o(div_result),
-        .ready_o(div_ready)
-    );
+    //E-M数据传输
+    flopenrc #(32) r1M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(alu_result),.q(alu_resultM));
+    flopenrc #(1) r2M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(zero),.q(zeroM));
+    flopenrc #(32) r3M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(mux3_B_result),.q(writedataM));
+    flopenrc #(32) r4M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(pc_branch),.q(pc_branchM));
+    flopenrc #(5) r5M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(wa3),.q(wa3M));
+    // EM阶段传递PC+8
+    flopenrc #(32) r6M(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(pc_plus_8E),.q(pc_plus_8M));
     
-    assign stall_divE = start_div & ~div_ready;
-
-    // HI/LO 寄存器
-    reg [31:0] hi, lo;
-    always @(posedge clk) begin
-        if (rst) begin
-            hi <= 0;
-            lo <= 0;
-        end else if (div_ready) begin
-            hi <= div_result[63:32];
-            lo <= div_result[31:0];
-        end else if ((alucontrol == `MULT_CONTROL) || (alucontrol == `MULTU_CONTROL)) begin
-            hi <= mul_result[63:32];
-            lo <= mul_result[31:0];
-        end
-    end
-
-    // E-M数据传输
-    // 使用 flushM 清空流水线寄存器 (插入气泡)
-    flopenrc #(32) r1M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(alu_result),.q(alu_resultM));
-    flopenrc #(1) r2M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(zero),.q(zeroM));
-    flopenrc #(32) r3M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(mux3_B_result),.q(writedataM));
-    flopenrc #(32) r4M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(pc_branch),.q(pc_branchM));
-    flopenrc #(5) r5M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(wa3),.q(wa3M));
-    // EM阶段传递PC+8 (HEAD Link Support)
-    flopenrc #(32) r6M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(pc_plus_8E),.q(pc_plus_8M));
+    //M-W数据传输
+    flopenrc #(32) r1W(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(alu_resultM),.q(alu_resultW));
+    flopenrc #(32) r2W(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(mem_rdata),.q(mem_rdataW));
+    flopenrc #(5) r3W(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(wa3M),.q(wa3W));
+    // MW阶段传递PC+8
+    flopenrc #(32) r4W(.clk(clka),.rst(rst),.en(1'b1),.clear(1'b0),.d(pc_plus_8M),.q(pc_plus_8W));
     
-    // M-W数据传输
-    flopenrc #(32) r1W(.clk(clk),.rst(rst),.en(1'b1),.clear(1'b0),.d(alu_resultM),.q(alu_resultW));
-    flopenrc #(32) r2W(.clk(clk),.rst(rst),.en(1'b1),.clear(1'b0),.d(mem_rdata),.q(mem_rdataW));
-    flopenrc #(5) r3W(.clk(clk),.rst(rst),.en(1'b1),.clear(1'b0),.d(wa3M),.q(wa3W));
-    // MW阶段传递PC+8 (HEAD Link Support)
-    flopenrc #(32) r4W(.clk(clk),.rst(rst),.en(1'b1),.clear(1'b0),.d(pc_plus_8M),.q(pc_plus_8W));
-    
+    //wd3: 使用resultW（已包含Link的PC+8选择）
     assign wd3 = resultW;
     
-    hazard hazard(
-        .rst(rst),
-        .rsD(instrD[25:21]),
-        .rtD(instrD[20:16]),
-        .rsE(rsE),
-        .rtE(rtE),
-        .regwriteE(regwriteE),.regwriteM(regwriteM),.regwriteW(regwrite),
-        .memtoregE(memtoregE),.memtoregM(memtoregM),.branchD(branch),
-        .writeregE(wa3),.writeregM(wa3M),.writeregW(wa3W),
+    hazard hazard(.rst(rst),.rsD(instrD[25:21]),.rtD(instrD[20:16]),.rsE(rsE),.rtE(rtE),
+        .regwriteE(regwriteE),.regwriteM(regwriteM),.regwriteW(regwrite),.memtoregE(memtoregE), 
+        .memtoregM(memtoregM),.branchD(branch),.writeregE(wa3),.writeregM(wa3M),.writeregW(wa3W),
         .forwordAE(forwordAE),.forwordBE(forwordBE),.forwordAD(forwordAD),.forwordBD(forwordBD),
         .stallF(stallF),.stallD(stallD),.flushE(flushE),
-        // Combined Hazard Logic
-        .stall_divE(stall_divE),
-        .stallE(stallE),
-        .flushM(flushM),
         .jump_conflictD(jump_conflictD),
-        .linkE(linkE)
-    );
+        .linkE(linkE));
     
-    // Output Signals
+    // 输出stall和flush信号给controller
     assign stallD_out = stallD;
     assign flushE_out = flushE;
 

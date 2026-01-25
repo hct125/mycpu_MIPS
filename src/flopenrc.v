@@ -1,5 +1,7 @@
 `timescale 1ns / 1ps
-//含有rst、en和clear功能的寄存器模块
+// flip-flop with enable, rst, clear
+// clear ?? en=1 ???
+
 module flopenrc #(parameter WIDTH = 8)(
     input wire clk,rst,en,clear,
     input wire[WIDTH-1:0] d,
@@ -15,5 +17,6 @@ module flopenrc #(parameter WIDTH = 8)(
                 q <= d;
             end
         end
+        // ??en=0???????
     end
 endmodule

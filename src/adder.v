@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-//32-bit adder
+//�ӷ���ģ��
 module adder(
 	input wire[31:0] a,b,
 	output wire[31:0] y

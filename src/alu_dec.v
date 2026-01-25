@@ -1,43 +1,47 @@
 `timescale 1ns / 1ps
-//根据op码和funct码解码，输出对应的alu control信号
-`include "defines2.vh"
+// ALU译码器 - 支持逻辑运算和移位指令
+// aluop编码：
+// 3'b000: ADD (LW/SW/ADDI/ADDIU)
+// 3'b001: OR (ORI)
+// 3'b010: R-TYPE (根据funct解码)
+// 3'b011: AND (ANDI)
+// 3'b100: XOR (XORI)
+// 3'b101: LUI
+
 module alu_dec(
     input wire [5:0] funct,
-    input wire [3:0] op,
-    output reg [4:0] alucontrol
+    input wire [2:0] op,            // 扩展到3位
+    output wire [3:0] alucontrol    // 扩展到4位
 );
 
-// assign alucontrol = (op == 3'b000)? `ALU_ADD : //lw sw addi addiu
-always @(*) begin
-    case(op)
-        `R_TYPE_OP: begin
-                case(funct)
-                    `ADD: alucontrol <= `ADD_CONTROL;
-                    `ADDU: alucontrol <= `ADDU_CONTROL;
-                    `SUB: alucontrol <= `SUB_CONTROL;
-                    `SUBU: alucontrol <= `SUBU_CONTROL;
-                    `SLT: alucontrol <= `SLT_CONTROL;
-                    `SLTU: alucontrol <= `SLTU_CONTROL;
-                    `SLL: alucontrol <= `SLL_CONTROL;
-                    `AND: alucontrol <= `AND_CONTROL; 
-                    `OR: alucontrol <= `OR_CONTROL;
-                    `MULT: alucontrol <= `MULT_CONTROL;
-                    `MULTU: alucontrol <= `MULTU_CONTROL;
-                    `DIV: alucontrol <= `DIV_CONTROL;
-                    `DIVU: alucontrol <= `DIVU_CONTROL;
-                    default: alucontrol <= 5'b00000;
-                endcase
-        end
-        `ORI_OP: alucontrol <= `OR_CONTROL;
-        `ADDI_OP: alucontrol <= `ADD_CONTROL;
-        `ADDIU_OP: alucontrol <= `ADDU_CONTROL;
-        `SLTI_OP: alucontrol <= `SLT_CONTROL;
-        `SLTIU_OP: alucontrol <= `SLTU_CONTROL;
-        `MEM_OP: alucontrol <= `ADD_CONTROL;
-        `USELESS_OP: alucontrol <= 5'b00000;
-        default: alucontrol <= 5'b00000;
-    endcase
-end
-
+assign alucontrol = 
+    (op == 3'b000) ? 4'b0010 :      // LW/SW/ADDI/ADDIU -> ADD
+    (op == 3'b001) ? 4'b0001 :      // ORI -> OR
+    (op == 3'b011) ? 4'b0000 :      // ANDI -> AND
+    (op == 3'b100) ? 4'b0011 :      // XORI -> XOR
+    (op == 3'b101) ? 4'b1010 :      // LUI -> LUI
+    (op == 3'b010) ? (              // R-TYPE: 根据funct解码
+        // 算术运算
+        (funct == 6'b100000) ? 4'b0010 : // ADD
+        (funct == 6'b100001) ? 4'b0010 : // ADDU (与ADD相同)
+        (funct == 6'b100010) ? 4'b0110 : // SUB
+        (funct == 6'b100011) ? 4'b0110 : // SUBU (与SUB相同)
+        (funct == 6'b101010) ? 4'b0111 : // SLT
+        (funct == 6'b101011) ? 4'b0111 : // SLTU (暂用SLT)
+        // 逻辑运算
+        (funct == 6'b100100) ? 4'b0000 : // AND
+        (funct == 6'b100101) ? 4'b0001 : // OR
+        (funct == 6'b100110) ? 4'b0011 : // XOR
+        (funct == 6'b100111) ? 4'b0100 : // NOR
+        // 移位指令（使用shamt）
+        (funct == 6'b000000) ? 4'b0101 : // SLL
+        (funct == 6'b000010) ? 4'b1000 : // SRL
+        (funct == 6'b000011) ? 4'b1001 : // SRA
+        // 移位指令（使用rs）
+        (funct == 6'b000100) ? 4'b1011 : // SLLV
+        (funct == 6'b000110) ? 4'b1100 : // SRLV
+        (funct == 6'b000111) ? 4'b1101 : // SRAV
+        4'b0000
+    ) : 4'b0000;
                                 
 endmodule
