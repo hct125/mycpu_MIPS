@@ -15,6 +15,12 @@ module regfile(
 		end
 	end
 
+	wire [31:0] rf0 = rf[0];
+	wire [31:0] rf1 = rf[1];
+	wire [31:0] rf2 = rf[2];
+	wire [31:0] rf3 = rf[3];
+	wire [31:0] rf4 = rf[4];  //观察信号
+
 	//读是组合逻辑
 	assign rd1 = (ra1 != 0) ? rf[ra1] : 0;  //0号寄存器留给0
 	assign rd2 = (ra2 != 0) ? rf[ra2] : 0;

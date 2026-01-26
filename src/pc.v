@@ -6,7 +6,7 @@ module pc(
     output reg [31:0] q
     );
     always @(posedge clk) begin
-        if(rst) q<=32'b0;
+        if(rst) q<=32'hbfc00000;  // SoC功能测试PC复位地址
         else begin
             if(en) q<=din;
             else q<=q;

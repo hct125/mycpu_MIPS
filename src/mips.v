@@ -11,7 +11,12 @@ module mips(
     output wire data_ram_ena,
     output wire [3:0] data_ram_wea,
     output wire [31:0] alu_result,
-    output wire [31:0] mem_wdata
+    output wire [31:0] mem_wdata,
+    // 调试信号
+    output wire [31:0] debug_wb_pc,
+    output wire [3:0]  debug_wb_rf_wen,
+    output wire [4:0]  debug_wb_rf_wnum,
+    output wire [31:0] debug_wb_rf_wdata
 );
 
     wire memtoreg,alusrc,regdst,regwrite,jump,regwriteM,memtoregE,regwriteE,memtoregM,branch;
@@ -24,7 +29,7 @@ module mips(
     // stall和flush信号
     wire stallD, flushD, flushE, stallE, flushM, flushW;
 
-    wire cp0weM, cp0reE, syscallM, breakM, eretM;
+    wire cp0weM, cp0reE, syscallM, breakM, eretM, riM;
     
     assign inst_ram_ena = 1'b1; //指令存储器始终使能
 	
@@ -64,7 +69,8 @@ module mips(
         .cp0reE(cp0reE),
         .syscallM(syscallM),
         .breakM(breakM),
-        .eretM(eretM)
+        .eretM(eretM),
+        .riM(riM)
     );
     
     datapath dp(
@@ -100,6 +106,7 @@ module mips(
         .syscallM(syscallM),
         .breakM(breakM),
         .eretM(eretM),
+        .riM(riM),
         // 传出instrD给controller
         .instrD_to_controller(instrD),
         // 输出Hazard信号
@@ -108,7 +115,12 @@ module mips(
         .flushE(flushE),
         .stallE(stallE),
         .flushM(flushM),
-        .flushW(flushW)
+        .flushW(flushW),
+        // 调试信号
+        .debug_wb_pc(debug_wb_pc),
+        .debug_wb_rf_wen(debug_wb_rf_wen),
+        .debug_wb_rf_wnum(debug_wb_rf_wnum),
+        .debug_wb_rf_wdata(debug_wb_rf_wdata)
     );
 	
 endmodule
