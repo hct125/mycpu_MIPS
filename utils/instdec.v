@@ -69,8 +69,8 @@ module instdec(
                         `JR: ascii<= "JR";
                         `JALR: ascii<= "JALR";
                         
-                        `SYSCALL: ascii<= "SYSC";
-                        `BREAK: ascii<= "BRE";
+                        `SYSCALL: ascii<= "SYSCALL";
+                        `BREAK: ascii<= "BREAK";
                         default: ascii<="N-R";
                     endcase
                 end
@@ -114,7 +114,7 @@ module instdec(
                     ascii<="ERET";
                 end else begin 
                     case (instr[25:21])
-                        5'b00100: ascii<="MTOC0";
+                        5'b00100: ascii<="MTC0";
                         5'b00000: ascii<="MFC0";
                     endcase
                 end

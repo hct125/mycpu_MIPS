@@ -18,6 +18,7 @@ module hazard(
     input wire stall_divE,      // E阶段除法器忙信号 (Arithmetic新增)
     input wire jump_conflictD,  // 跳转冲突（JR/JALR的rs有数据冒险）(HEAD新增)
     input wire linkE,           // E阶段是否为Link指令 (HEAD新增)
+    input wire flush_exception, // 异常/ERET清空流水线 (Exception新增)
     
     // Outputs
     output [1:0] forwordAE,     // E阶段SrcA转发控制
@@ -27,8 +28,10 @@ module hazard(
     output reg stallF,          // F阶段暂停
     output reg stallD,          // D阶段暂停
     output reg stallE,          // E阶段暂停
+    output reg flushD,          // D阶段清空 (新增: 用于异常)
     output reg flushE,          // E阶段清空 (插入气泡)
-    output reg flushM           // M阶段清空 (插入气泡)
+    output reg flushM,          // M阶段清空 (插入气泡)
+    output reg flushW           // W阶段清空 (新增: 用于异常，清除M级指令的写回/访存)
 );
 
     // E阶段转发逻辑 (Data Hazard on ALU)
@@ -87,19 +90,29 @@ module hazard(
     
     // 最终暂停/清空信号生成 
     // stall_divE (除法器忙) 具有最高优先级，会导致流水线停顿
+    // flush_exception (异常) 具有更高优先级，必须刷新所有阶段
+    
     always @(*) begin
         // F/D 阶段暂停：存在任何冒险或除法器忙
-        stallF = rst ? 1'b0 : (lwstall | branch_stall | jump_stall | link_stall | stall_divE);
-        stallD = rst ? 1'b0 : (lwstall | branch_stall | jump_stall | link_stall | stall_divE);
+        // 如果发生异常，强制不暂停(让PC更新)
+        stallF = rst ? 1'b0 : (~flush_exception & (lwstall | branch_stall | jump_stall | link_stall | stall_divE));
+        stallD = rst ? 1'b0 : (~flush_exception & (lwstall | branch_stall | jump_stall | link_stall | stall_divE));
         
         // E 阶段暂停：仅在除法运算时暂停，保持 ALU 状态
-        stallE = rst ? 1'b0 : stall_divE; 
+        stallE = rst ? 1'b0 : (~flush_exception & stall_divE); 
         
-        // E 阶段清空 (冲刷)：当前端暂停但不是因为除法时，说明 D 阶段无法发射指令，需向 E 阶段插入气泡
-        flushE = rst ? 1'b0 : (lwstall | branch_stall | jump_stall | link_stall); 
+        // 此处flush信号逻辑：
+        // flushD: 异常发生时，清除F-D寄存器
+        flushD = rst ? 1'b0 : flush_exception;
         
-        // M 阶段清空 (冲刷)：当 E 阶段被除法阻塞时，需向 M 阶段插入气泡
-        flushM = rst ? 1'b0 : stall_divE; 
+        // flushE (D-E寄存器): Load冒险 / 分支冒险 / 异常
+        flushE = rst ? 1'b0 : (lwstall | branch_stall | jump_stall | link_stall | flush_exception); 
+        
+        // flushM (E-M寄存器): 除法 / 异常
+        flushM = rst ? 1'b0 : (stall_divE | flush_exception); 
+
+        // flushW (M-W寄存器): 异常
+        flushW = rst ? 1'b0 : flush_exception;
     end
 
 endmodule

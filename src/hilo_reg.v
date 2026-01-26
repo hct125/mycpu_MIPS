@@ -12,7 +12,7 @@ module hilo_reg(
     input wire [63:0] mul_result,
     input wire [31:0] rs_data,      // mux3_A_result
     input wire [31:0] alu_result,   // Normal ALU result
-    output reg [31:0] alu_out_final
+    output reg [31:0] alu_out_hilo
 );
     reg [31:0] hi, lo;
 
@@ -50,9 +50,9 @@ module hilo_reg(
 
     always @(*) begin
         case (alucontrol)
-            `MFHI_CONTROL: alu_out_final = hi;
-            `MFLO_CONTROL: alu_out_final = lo;
-            default:       alu_out_final = alu_result;
+            `MFHI_CONTROL: alu_out_hilo = hi;
+            `MFLO_CONTROL: alu_out_hilo = lo;
+            default:       alu_out_hilo = alu_result;
         endcase
     end
 endmodule

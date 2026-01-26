@@ -8,13 +8,20 @@
 
 module main_dec(
     input wire [5:0] op,
+    input wire [4:0] rs,    // Added rs input
     input wire [4:0] rt,        // 用于REGIMM指令区分 BLTZ/BGEZ/BLTZAL/BGEZAL
     input wire [5:0] funct,     // 用于R型指令区分 JR/JALR
     output reg [8:0] sigs,      // {jump, regwrite, regdst, alusrc, branch, memwrite, memtoreg, data_ram_ena, sext}
     output reg [3:0] aluop,     // 4位 ALU 操作码
     output reg jal,             // 选择写$31
     output reg link,            // 选择写PC+8
-    output reg jr               // 寄存器跳转
+    output reg jr,              // 寄存器跳转
+    // CP0 Controls
+    output reg cp0we,
+    output reg cp0re,
+    output reg syscall,
+    output reg break_inst,
+    output reg eret  
 );
 
     always@(*)  begin 
@@ -22,6 +29,11 @@ module main_dec(
         jal <= 1'b0;
         link <= 1'b0;
         jr <= 1'b0;
+        cp0we <= 1'b0;
+        cp0re <= 1'b0;
+        syscall <= 1'b0;
+        break_inst <= 1'b0;
+        eret <= 1'b0;
         
         case(op)
             `R_TYPE: begin
@@ -38,6 +50,16 @@ module main_dec(
                         link <= 1'b1;     // 写PC+8
                         jr <= 1'b1;       // 寄存器跳转
                     end
+                    `SYSCALL: begin
+                        sigs <= 9'b000000000;
+                        aluop <= `USELESS_OP;
+                        syscall <= 1'b1;
+                    end
+                    `BREAK: begin
+                        sigs <= 9'b000000000;
+                        aluop <= `USELESS_OP;
+                        break_inst <= 1'b1;
+                    end
                     default: begin   // 普通R型 (ADD, SUB, SLT, DIV等)
                         sigs <= 9'b011000001;
                         aluop <= `R_TYPE_OP;
@@ -45,43 +67,53 @@ module main_dec(
                 endcase
             end
             
-            `LW: begin     // lw
+            `SPECIAL3_INST: begin // MTC0, MFC0, ERET
+                case(rs)
+                    `MTC0: begin
+                        // MTC0 pushes rt to CP0.
+                        // We need atomic write.
+                        // We set regdst=1 so that wa3 tracks 'rd' (CP0 addr) for forwarding check.
+                        // regwrite=0.
+                        sigs <= 9'b001000000; // regdst=1
+                        aluop <= `MTC0_OP; 
+                        cp0we <= 1'b1;
+                    end
+                    `MFC0: begin
+                        sigs <= 9'b010000000; // regwrite=1.
+                        // MFC0: rt <- CP0[rd].
+                        cp0re <= 1'b1;
+                        aluop <= `MFC0_OP;
+                    end
+                    `ERET: begin
+                        sigs <= 9'b000000000;
+                        eret <= 1'b1;
+                        // ERET jumps to EPC. Logic in exception/controller.
+                        aluop <= `USELESS_OP;
+                        // Need strict check for funct=011000?
+                        // For now assuming rs=10000 is enough as per text.
+                        // Text: "assign id_is_eret_o = (id_instr_i == ...)"
+                        // My code is structrued differently.
+                        // But rs check is good.
+                    end
+                    default: begin
+                        sigs <= 9'b000000000;
+                    end
+                endcase
+            end
+
+            `LW, `LB, `LBU, `LH, `LHU: begin
+
                 sigs <= 9'b010100111; // {0,1,0,1,0,0,1,1,1} -> regwrite, alusrc, memtoreg, ram_en, sext
                 aluop <= `MEM_OP;
             end
             
-            `SW: begin     // sw
+            `SW, `SB, `SH: begin
                 sigs <= 9'b000101011; // {0,0,0,1,0,1,0,1,1} -> alusrc, memwrite, ram_en, sext
                 aluop <= `MEM_OP;
             end
-
-            `LB, `LBU, `LH, `LHU: begin // lb, lbu, lh, lhu
-                sigs <= 9'b010100111; // Same as LW
-                aluop <= `MEM_OP;
-            end
-
-            `SB, `SH: begin     // sb, sh
-                sigs <= 9'b000101011; // Same as SW
-                aluop <= `MEM_OP;
-            end
             
-            `BEQ: begin     // beq
+            `BEQ, `BNE, `BLEZ, `BGTZ: begin
                 sigs <= 9'b000010001; // {0,0,0,0,1,0,0,0,1} -> branch, sext
-                aluop <= `USELESS_OP;
-            end
-            
-            `BNE: begin     // bne
-                sigs <= 9'b000010001; 
-                aluop <= `USELESS_OP; // 分支判定是在 D 阶段,ALU 计算出的结果实际上是被丢弃的
-            end
-            
-            `BLEZ: begin    // blez
-                sigs <= 9'b000010001;
-                aluop <= `USELESS_OP;
-            end
-            
-            `BGTZ: begin    // bgtz
-                sigs <= 9'b000010001;
                 aluop <= `USELESS_OP;
             end
             

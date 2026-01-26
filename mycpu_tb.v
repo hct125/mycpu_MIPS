@@ -36,7 +36,7 @@ module tb_top();
         if (reset) begin
             count <= count + 1;
             if (count<=70)
-                $display("pc=%h",pc,",instr=%h",instr,", alu_result=%h",alu_result);
+                $display("count=%d,",count,"pc=%h,",pc,"instr=%h,",instr,"alu_result=%h,",alu_result,"readdata=%h,",readdata,"writedata=%h",writedata);
         end
     end
 
