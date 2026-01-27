@@ -1,0 +1,145 @@
+//////////////////////////////////////////////////////////////////////
+////                                                              ////
+//// Copyright (C) 2014 leishangwen@163.com                       ////
+////                                                              ////
+//// This source file may be used and distributed without         ////
+//// restriction provided that this copyright statement is not    ////
+//// removed from the file and that any derivative work contains  ////
+//// the original copyright notice and the associated disclaimer. ////
+////                                                              ////
+//// This source file is free software; you can redistribute it   ////
+//// and/or modify it under the terms of the GNU Lesser General   ////
+//// Public License as published by the Free Software Foundation; ////
+//// either version 2.1 of the License, or (at your option) any   ////
+//// later version.                                               ////
+////                                                              ////
+//// This source is distributed in the hope that it will be       ////
+//// useful, but WITHOUT ANY WARRANTY; without even the implied   ////
+//// warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR      ////
+//// PURPOSE.  See the GNU Lesser General Public License for more ////
+//// details.                                                     ////
+////                                                              ////
+//////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
+// Module:  div
+// File:    div.v
+// Author:  Lei Silei
+// E-mail:  leishangwen@163.com
+// Description: ³ý·¨Ä£¿é
+// Revision: 1.0
+//////////////////////////////////////////////////////////////////////
+//1.1 增加 ready 信号，适配 datapath 握手逻辑; 修复背靠背 bug
+`timescale 1ns/1ps
+`include "defines2.vh"
+
+module div(
+
+	input wire	clk,
+	input wire	rst,
+	
+	input wire  signed_div_i,
+	input wire[31:0] opdata1_i,
+	input wire[31:0] opdata2_i,
+	input wire start_i,  //开始信号
+	input wire annul_i, //清空信号
+	
+	output reg[63:0] result_o,  
+	output reg ready_o  // High when result is valid
+);
+
+	wire[32:0] div_temp;
+	reg[5:0] cnt;
+	reg[64:0] dividend;
+	reg[1:0] state;
+	reg[31:0] divisor;	 
+	reg[31:0] temp_op1;
+	reg[31:0] temp_op2;
+	
+	// 保存原始操作数的符号位和signed标志，防止在除法过程中被改变
+	reg op1_sign_save;
+	reg op2_sign_save;
+	reg signed_div_save;
+	
+	assign div_temp = {1'b0,dividend[63:32]} - {1'b0,divisor};
+
+	always @ (posedge clk) begin
+    // Reset condition change to simple rst for compatibility if defines2.vh doesn't have RstEnable
+    // But let's check defines2.vh first. The user included defines.v in original but defines2.vh is in workspace.
+		if (rst) begin 
+			state <= `DivFree;
+			ready_o <= `DivResultNotReady;
+			result_o <= {`ZeroWord,`ZeroWord};
+		end else begin
+		  case (state)
+		  	`DivFree:			begin               //DivFree
+                if (ready_o == `DivResultReady) begin
+                    ready_o <= `DivResultNotReady;
+                end else if(start_i == `DivStart && annul_i == 1'b0) begin
+		  			if(opdata2_i == `ZeroWord) begin
+		  				state <= `DivByZero;
+		  			end else begin
+		  				state <= `DivOn;
+		  				cnt <= 6'b000000;
+                        ready_o <= `DivResultNotReady;
+                        // 保存原始操作数的符号位和signed标志
+                        op1_sign_save <= opdata1_i[31];
+                        op2_sign_save <= opdata2_i[31];
+                        signed_div_save <= signed_div_i;
+		  				if(signed_div_i == 1'b1 && opdata1_i[31] == 1'b1 ) begin
+		  					temp_op1 = ~opdata1_i + 1;
+		  				end else begin
+		  					temp_op1 = opdata1_i;
+		  				end
+		  				if(signed_div_i == 1'b1 && opdata2_i[31] == 1'b1 ) begin
+		  					temp_op2 = ~opdata2_i + 1;
+		  				end else begin
+		  					temp_op2 = opdata2_i;
+		  				end
+		  				dividend <= {`ZeroWord,`ZeroWord};
+              dividend[32:1] <= temp_op1;
+              divisor <= temp_op2;
+             end
+          end else begin
+						ready_o <= `DivResultNotReady;
+						result_o <= {`ZeroWord,`ZeroWord};
+				  end          	
+		  	end
+		  	`DivByZero:		begin               //DivByZero
+         	dividend <= {`ZeroWord,`ZeroWord};
+          state <= `DivEnd;		 		
+		  	end
+		  	`DivOn:				begin               //DivOn
+		  		if(annul_i == 1'b0) begin
+		  			if(cnt != 6'b100000) begin
+               if(div_temp[32] == 1'b1) begin
+                  dividend <= {dividend[63:0] , 1'b0};
+               end else begin
+                  dividend <= {div_temp[31:0] , dividend[31:0] , 1'b1};
+               end
+               cnt <= cnt + 1;
+             end else begin
+               // 使用保存的符号位，而不是当前的opdata1_i/opdata2_i
+               if((signed_div_save == 1'b1) && ((op1_sign_save ^ op2_sign_save) == 1'b1)) begin
+                  dividend[31:0] <= (~dividend[31:0] + 1);
+               end
+               if((signed_div_save == 1'b1) && ((op1_sign_save ^ dividend[64]) == 1'b1)) begin              
+                  dividend[64:33] <= (~dividend[64:33] + 1);
+               end
+               state <= `DivEnd;
+               cnt <= 6'b000000;            	
+             end
+		  		end else begin
+		  			state <= `DivFree;
+		  		end	
+		  	end
+		  	`DivEnd:			begin               //DivEnd
+        	result_o <= {dividend[64:33], dividend[31:0]};  
+            ready_o <= `DivResultReady;
+            state <= `DivFree; // Auto return to Free to support back-to-back DIV
+		  	end
+		  endcase
+		end
+	end
+
+endmodule
