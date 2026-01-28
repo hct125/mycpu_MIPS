@@ -1,5 +1,6 @@
 `timescale 1ns / 1ps
 // Controller模块
+// AXI版本 - 添加stallM和stallW支持
 module controller(
     input clk,rst,
     input wire [31:0] instr,
@@ -8,6 +9,8 @@ module controller(
     input wire flushD,      // D阶段清空 (unused in this module)
     input wire flushE,      // E阶段清空
     input wire stallE,      // E阶段暂停
+    input wire stallM,      // M阶段暂停 (AXI新增)
+    input wire stallW,      // W阶段暂停 (AXI新增)
     input wire flushM,      // M阶段清空
     input wire flushW,      // W阶段清空
     
@@ -95,10 +98,11 @@ module controller(
 
     // E->M 流水线寄存器
     // {regwrite, memwrite, memtoreg, data_ram_ena, link, cp0we, syscall, break, eret, ri}
-    // 控制信号寄存器：flushM清空（除法暂停时）
-    floprc #(10) r1M(
+    // AXI版本：使用 ~stallM 作为使能
+    flopenrc #(10) r1M(
         .clk(clk),
         .rst(rst),
+        .en(~stallM),
         .clear(flushM),
         .d({regwriteE, memwriteE, memtoregE, data_ram_enaE, linkE, cp0weE, syscallE, breakE, eretE, riE}),
         .q({regwriteM, memwrite, memtoregM, data_ram_ena, linkM, cp0weM, syscallM, breakM, eretM, riM})
@@ -107,9 +111,11 @@ module controller(
 
     // M->W 流水线寄存器
     // {regwrite, memtoreg, link}
-    floprc #(3) r1W(
+    // AXI版本：使用 ~stallW 作为使能
+    flopenrc #(3) r1W(
         .clk(clk),
         .rst(rst),
+        .en(~stallW),
         .clear(flushW),
         .d({regwriteM, memtoregM, linkM}),
         .q({regwrite, memetoreg, linkW})

@@ -1,6 +1,7 @@
 `timescale 1ns / 1ps
 `include "defines2.vh"
 // 数据通路模块
+// AXI版本 - 支持i_stall/d_stall暂停信号
 module datapath(
     input wire clk,rst,
     input wire [31:0] instr,
@@ -39,8 +40,17 @@ module datapath(
     
     // Outputs
     output wire [31:0] instrD_to_controller,
-    output wire stallD,stallE,
+    // AXI暂停信号输入
+    input wire i_stall,
+    input wire d_stall,
+    // Hazard输出信号
+    output wire stallD,stallE,stallM,stallW,
     output wire flushD,flushE,flushM,flushW,
+    // AXI暂停信号输出
+    output wire longest_stall,
+    output wire other_stall,
+    // 异常信号输出
+    output wire flush_exception,
     
     // Debug Signals
     output wire [31:0] debug_wb_pc,
@@ -49,15 +59,12 @@ module datapath(
     output wire [31:0] debug_wb_rf_wdata
 );
     
-    // Exception Wires
-    wire flush_exception;
+    // Exception Wires - flush_exception已在端口声明，这里只需要声明pc_exception_target
     wire [31:0] pc_exception_target;
 
     wire [31:0] pc_next;        // pc+4后的下一位pc
     wire [31:0] pc_next_jump;   // 最终PC (Jump/Branch/PC+4)
-    wire [31:0] pc_next_final;  // Final PC (Exception handling)
-    
-    assign pc_next_final = flush_exception ? pc_exception_target : pc_next_jump;
+    // 注：异常跳转现在在pc模块内部通过flush信号处理
 
     wire [31:0] rd1D;           // regfile输出的rd1
     wire [31:0] rd2D;           // regfile输出的rd2
@@ -82,7 +89,7 @@ module datapath(
     wire [31:0] mux3_B_result;
     
     // Hazard Unit Outputs
-    wire stallF; // stallE, flushM also generated but outputted
+    wire stallF, flushF; // stallE, flushM also generated but outputted
     
     // F-D间信号
     wire [31:0] instrD;
@@ -167,11 +174,16 @@ module datapath(
     );
     
     // PC Register (StallF)
+    // AXI版本：添加flush输入，异常时强制跳转到异常入口
+    // flush优先级高于en，确保即使有AXI stall也能正确处理异常
+    // 使用hazard输出的flushF，与flushD保持一致（参考实现方式）
     pc pc_module(
         .clk(clk),
         .rst(rst),
-        .en(~stallF), // stallF is already gated with ~flush_exception in hazard
-        .din(pc_next_final),
+        .en(~stallF),
+        .flush(flushF),                    // 使用hazard输出的flushF
+        .din(pc_next_jump),                // 正常情况下的下一个PC
+        .newpc(pc_exception_target),       // 异常入口地址
         .q(pc)
     );
     
@@ -334,26 +346,79 @@ module datapath(
     assign stall_divE = start_div_req & ~div_ready;
 
     // HI/LO 寄存器逻辑
+    // 按照参考实现重新设计
+    
+    // E阶段：计算hilo写使能和要写入的值
+    wire hilowrite_E;  // E阶段的hilowrite信号
+    wire [63:0] hilo_i_E;  // E阶段要写入HI/LO的值
+    
+    // hilowrite在E阶段：MULT, MULTU, MTHI, MTLO, DIV, DIVU
+    assign hilowrite_E = (alucontrol == `MULT_CONTROL) | (alucontrol == `MULTU_CONTROL) | 
+                         (alucontrol == `MTHI_CONTROL) | (alucontrol == `MTLO_CONTROL) |
+                         (alucontrol == `DIV_CONTROL)  | (alucontrol == `DIVU_CONTROL);
+    
+    // HI/LO寄存器当前值（从hilo_reg读取）
+    wire [31:0] hi_o, lo_o;
+    
+    // E阶段计算hilo_i_E
+    // 注意：除法只有在div_ready时才输出有效结果
+    reg [63:0] hilo_i_E_reg;
+    always @(*) begin
+        hilo_i_E_reg = 64'b0;  // 默认为0
+        case (alucontrol)
+            `MULT_CONTROL,
+            `MULTU_CONTROL: hilo_i_E_reg = mul_result;  // 使用乘法模块的输出
+            `MTHI_CONTROL:  hilo_i_E_reg = {mux3_A_result, lo_o};
+            `MTLO_CONTROL:  hilo_i_E_reg = {hi_o, mux3_A_result};
+            `DIV_CONTROL,
+            `DIVU_CONTROL:  begin
+                // 除法只有在ready时才输出有效结果
+                if (div_ready) begin
+                    hilo_i_E_reg = div_result;
+                end
+            end
+            default:        hilo_i_E_reg = 64'b0;
+        endcase
+    end
+    assign hilo_i_E = hilo_i_E_reg;
+    
+    // E阶段的ALU输出（MFHI/MFLO）
     wire [31:0] alu_out_hilo;
+    assign alu_out_hilo = (alucontrol == `MFHI_CONTROL) ? hi_o :
+                          (alucontrol == `MFLO_CONTROL) ? lo_o : alu_result;
+    
+    // E->M 流水线传递 hilowrite和hilo_i
+    // 按照参考实现：使用flushM作为clear信号
+    wire hilowrite_M;
+    wire [63:0] hilo_i_M;
+    
+    flopenrc #(1)  r_hilowrite_M(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(hilowrite_E),.q(hilowrite_M));
+    flopenrc #(64) r_hilo_i_M(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(hilo_i_E),.q(hilo_i_M));
+    
+    // M阶段：当有异常时，flushM=1会clear掉hilowrite_M
+    // 所以在hilo_reg中直接使用hilowrite_M作为写使能即可
+    // 但还需要再加一层保护：当M阶段发生异常时，不写入
+    wire hilowrite_final = hilowrite_M & ~flushM;
+    
     hilo_reg u_hilo(
         .clk(clk),
         .rst(rst),
-        .start_div(start_div_req),
-        .div_ready(div_ready),
-        .stallE(stallE),
-        .flushE(flushE),              // 新增：E阶段flush信号
-        .alucontrol(alucontrol),
-        .div_result(div_result),
-        .mul_result(mul_result),
-        .rs_data(mux3_A_result),
-        .alu_result(alu_result),
-        .alu_out_final(alu_out_hilo)  // 端口名修正为 alu_out_final
+        .we(hilowrite_final),
+        .hi_i(hilo_i_M[63:32]),
+        .lo_i(hilo_i_M[31:0]),
+        .hi_o(hi_o),
+        .lo_o(lo_o)
     );
 
     // CP0 Logic
     wire [31:0] cp0_data_o, cp0_epc_o, cp0_status_o, cp0_cause_o;
     wire timer_int_o;
     wire [31:0] cp0_data_forwarded;
+    
+    // W 阶段的 CP0 寄存器值（用于中断检测）
+    // 将 CP0 输出延迟一个流水级（M→W），确保 mtc0 写入 Cause/Status 后，
+    // 下一条指令（而不是 mtc0 本身）触发中断，符合 MIPS 中断语义
+    wire [31:0] cp0_status_W, cp0_cause_W, cp0_epc_W;
     // Exception Signals (M Stage)
     wire [31:0] excepttypeM;
     wire [31:0] badvaddrM;
@@ -363,7 +428,7 @@ module datapath(
         .clk(clk),
         .rst(rst),
         .we_i(cp0weM),
-        .waddr_i(wa3M),
+        .waddr_i(wa3M),     // MTC0时regdst=1，所以wa3M就是rd（CP0寄存器号）
         .raddr_i(rdE),
         .data_i(writedataM),
         
@@ -391,27 +456,27 @@ module datapath(
     assign alu_out_final = cp0reE ? cp0_data_forwarded : alu_out_hilo;
 
     // E-M数据传输
-    // 使用 flushM 清空流水线寄存器 (插入气泡)
-    flopenrc #(32) r1M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(alu_out_final),.q(alu_resultM));
-    flopenrc #(1) r2M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(zero),.q(zeroM));
+    // AXI版本：使用 ~stallM 作为使能，flushM 清空流水线寄存器
+    flopenrc #(32) r1M(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(alu_out_final),.q(alu_resultM));
+    flopenrc #(1) r2M(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(zero),.q(zeroM));
     
     // 写数据先存入内部寄存器
     wire [31:0] writedataM_raw;
-    flopenrc #(32) r3M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(mux3_B_result),.q(writedataM_raw));
+    flopenrc #(32) r3M(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(mux3_B_result),.q(writedataM_raw));
 
     // 访存插入：传递指令其二（E到M）
     wire [5:0] opM;
-    flopenrc #(6) r_opM(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(opE),.q(opM));
+    flopenrc #(6) r_opM(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(opE),.q(opM));
 
     // PC+8计算（用于Link指令）
     adder pc_plus_8_module(.a(pc_plus_4E),.b(32'h4),.y(pc_plus_8E));
 
-    flopenrc #(32) r4M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(pc_branch),.q(pc_branchM));
-    flopenrc #(5) r5M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(wa3),.q(wa3M));
+    flopenrc #(32) r4M(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(pc_branch),.q(pc_branchM));
+    flopenrc #(5) r5M(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(wa3),.q(wa3M));
     // EM阶段传递PC+8 (HEAD Link Support)
-    flopenrc #(32) r6M(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(pc_plus_8E),.q(pc_plus_8M));
+    flopenrc #(32) r6M(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(pc_plus_8E),.q(pc_plus_8M));
     // 传递PC（E到M）
-    flopenrc #(32) r_pcM(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(pcE),.q(pcM));
+    flopenrc #(32) r_pcM(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(pcE),.q(pcM));
     
     // 写数据对齐逻辑：SB需要将字节复制4次，SH需要将半字复制2次
     assign writedataM = (opM == `SW) ? writedataM_raw :
@@ -430,19 +495,25 @@ module datapath(
     );
     
     // M-W数据传输
-    // flushW used to squash M-stage exception instruction
-    flopenrc #(32) r1W(.clk(clk),.rst(rst),.en(1'b1),.clear(flushW),.d(alu_resultM),.q(alu_resultW));
-    flopenrc #(32) r2W(.clk(clk),.rst(rst),.en(1'b1),.clear(flushW),.d(mem_rdata),.q(mem_rdataW));
-    flopenrc #(5) r3W(.clk(clk),.rst(rst),.en(1'b1),.clear(flushW),.d(wa3M),.q(wa3W));
+    // AXI版本：使用 ~stallW 作为使能，flushW 清空流水线寄存器
+    flopenrc #(32) r1W(.clk(clk),.rst(rst),.en(~stallW),.clear(flushW),.d(alu_resultM),.q(alu_resultW));
+    flopenrc #(32) r2W(.clk(clk),.rst(rst),.en(~stallW),.clear(flushW),.d(mem_rdata),.q(mem_rdataW));
+    flopenrc #(5) r3W(.clk(clk),.rst(rst),.en(~stallW),.clear(flushW),.d(wa3M),.q(wa3W));
     // MW阶段传递PC+8 (HEAD Link Support)
-    flopenrc #(32) r4W(.clk(clk),.rst(rst),.en(1'b1),.clear(flushW),.d(pc_plus_8M),.q(pc_plus_8W));
+    flopenrc #(32) r4W(.clk(clk),.rst(rst),.en(~stallW),.clear(flushW),.d(pc_plus_8M),.q(pc_plus_8W));
     // 传递PC（M到W）
-    flopenrc #(32) r_pcW(.clk(clk),.rst(rst),.en(1'b1),.clear(flushW),.d(pcM),.q(pcW));
+    flopenrc #(32) r_pcW(.clk(clk),.rst(rst),.en(~stallW),.clear(flushW),.d(pcM),.q(pcW));
     // 传递memtoreg信号（M到W）- 修复W阶段Load指令结果选择bug
-    flopenrc #(1) r_memtoregW(.clk(clk),.rst(rst),.en(1'b1),.clear(flushW),.d(memtoregM),.q(memtoregW));
+    flopenrc #(1) r_memtoregW(.clk(clk),.rst(rst),.en(~stallW),.clear(flushW),.d(memtoregM),.q(memtoregW));
     
     // 访存插入：传递指令其三（M到W）
-    flopenrc #(6) r_opW(.clk(clk),.rst(rst),.en(1'b1),.clear(flushW),.d(opM),.q(opW));
+    flopenrc #(6) r_opW(.clk(clk),.rst(rst),.en(~stallW),.clear(flushW),.d(opM),.q(opW));
+    
+    // 传递 CP0 寄存器值（M到W）- 用于中断检测
+    // 延迟一级确保软件中断在正确的指令上触发
+    flopenrc #(32) r_cp0_statusW(.clk(clk),.rst(rst),.en(~stallW),.clear(flushW),.d(cp0_status_o),.q(cp0_status_W));
+    flopenrc #(32) r_cp0_causeW(.clk(clk),.rst(rst),.en(~stallW),.clear(flushW),.d(cp0_cause_o),.q(cp0_cause_W));
+    flopenrc #(32) r_cp0_epcW(.clk(clk),.rst(rst),.en(~stallW),.clear(flushW),.d(cp0_epc_o),.q(cp0_epc_W));
     
     mem_read_ctrl u_mem_read(
         .opW(opW),
@@ -460,21 +531,22 @@ module datapath(
     
     // Delay Slot Pipeline
     wire dslotF = (jump | branch | jalD | jrD); 
+    // Delay Slot传递 - 使用与参考实现相同的flush信号
     wire dslotD, dslotE;
-    flopenrc #(1) r_dslD(.clk(clk),.rst(rst),.en(~stallD),.clear(flushE),.d(dslotF),.q(dslotD));
+    flopenrc #(1) r_dslD(.clk(clk),.rst(rst),.en(~stallD),.clear(flushD),.d(dslotF),.q(dslotD));
     flopenrc #(1) r_dslE(.clk(clk),.rst(rst),.en(~stallE),.clear(flushE),.d(dslotD),.q(dslotE));
-    flopenrc #(1) r_dslM(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(dslotE),.q(is_in_delayslot_M));
+    flopenrc #(1) r_dslM(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(dslotE),.q(is_in_delayslot_M));
     
-    // PC Error
+    // PC Error - 与PC使用相同的clear信号以保持同步
     wire pcErrorF = (pc[1:0] != 2'b00);
     wire pcErrorD, pcErrorE, pcErrorM;
-    flopenrc #(1) r_pcErrD(.clk(clk),.rst(rst),.en(~stallD),.clear(flushE),.d(pcErrorF),.q(pcErrorD));
+    flopenrc #(1) r_pcErrD(.clk(clk),.rst(rst),.en(~stallD),.clear(flushD),.d(pcErrorF),.q(pcErrorD));
     flopenrc #(1) r_pcErrE(.clk(clk),.rst(rst),.en(~stallE),.clear(flushE),.d(pcErrorD),.q(pcErrorE));
-    flopenrc #(1) r_pcErrM(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(pcErrorE),.q(pcErrorM));
+    flopenrc #(1) r_pcErrM(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(pcErrorE),.q(pcErrorM));
 
     // Overflow (E->M)
     wire overflowM;
-    flopenrc #(1) r_ovM(.clk(clk),.rst(rst),.en(1'b1),.clear(flushM),.d(overflow_wire),.q(overflowM));
+    flopenrc #(1) r_ovM(.clk(clk),.rst(rst),.en(~stallM),.clear(flushM),.d(overflow_wire),.q(overflowM));
     
     // Address Error
     wire [1:0] addr_lowM = alu_resultM[1:0];
@@ -502,10 +574,10 @@ module datapath(
         .pcError(pcErrorM),
         .eretM(eretM),
 
-        // Connect to CP0 Outputs
-        .cp0_status(cp0_status_o),
-        .cp0_cause(cp0_cause_o),
-        .cp0_epc(cp0_epc_o),
+        // Connect to CP0 Outputs (使用W阶段延迟的值进行中断检测)
+        .cp0_status(cp0_status_W),
+        .cp0_cause(cp0_cause_W),
+        .cp0_epc(cp0_epc_W),
 
         .pcM(pcM),
         .alu_outM(alu_resultM),
@@ -519,6 +591,7 @@ module datapath(
     );
     
     // hazard 实例化
+    // AXI版本：添加i_stall/d_stall输入和longest_stall/other_stall输出
     hazard hazard(
         .rst(rst),
         .rsD(instrD[25:21]),
@@ -529,22 +602,31 @@ module datapath(
         .memtoregE(memtoregE),.memtoregM(memtoregM),.branchD(branch),
         .writeregE(wa3),.writeregM(wa3M),.writeregW(wa3W),
         .forwordAE(forwordAE),.forwordBE(forwordBE),.forwordAD(forwordAD),.forwordBD(forwordBD),
-        .stallF(stallF),.stallD(stallD),
-        .flushD(flushD), // Explicitly connected
+        .stallF(stallF),.flushF(flushF),.stallD(stallD),
+        .flushD(flushD),
         .flushE(flushE),
-        // Combined Hazard Logic
+        // AXI暂停信号
         .stall_divE(stall_divE),
+        .i_stall(i_stall),
+        .d_stall(d_stall),
         .stallE(stallE),
+        .stallM(stallM),
+        .stallW(stallW),
         .flushM(flushM),
         .flushW(flushW),
         .jump_conflictD(jump_conflictD),
         .linkE(linkE),
-        .flush_exception(flush_exception) // Use generated flush_exception
+        .flush_exception(flush_exception),
+        // AXI暂停信号输出
+        .longest_stall(longest_stall),
+        .other_stall(other_stall)
     );
     
     // Debug Signals (Writeback Stage)
+    // 当stallW=1时，不输出写回信息（参考 mips_core_with_sram_like.v）
+    wire regwrite_for_debug = stallW ? 1'b0 : regwrite;
     assign debug_wb_pc = pcW;
-    assign debug_wb_rf_wen = {4{regwrite}};  // 4位写使能信号
+    assign debug_wb_rf_wen = {4{regwrite_for_debug}};
     assign debug_wb_rf_wnum = wa3W;
     assign debug_wb_rf_wdata = resultW;
 

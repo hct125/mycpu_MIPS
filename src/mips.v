@@ -1,17 +1,25 @@
 `timescale 1ns / 1ps
 // MIPS CPU顶层模块
+// AXI版本 - 支持i_stall/d_stall暂停信号
 
 module mips(
     input wire clk,
     input wire rst,
-    input wire [31:0] mem_rdata,
-    input wire [31:0] instr,
-    output wire [31:0] pc,	
-    output wire inst_ram_ena,
-    output wire data_ram_ena,
-    output wire [3:0] data_ram_wea,
-    output wire [31:0] alu_result,
-    output wire [31:0] mem_wdata,
+    // 指令SRAM接口
+    output wire inst_sram_en,
+    output wire [31:0] inst_sram_addr,
+    input wire [31:0] inst_sram_rdata,
+    input wire i_stall,                 // 取指暂停（来自 i_sram_to_sram_like）
+    // 数据SRAM接口
+    output wire data_sram_en,
+    output wire [31:0] data_sram_addr,
+    input wire [31:0] data_sram_rdata,
+    output wire [3:0] data_sram_wen,
+    output wire [31:0] data_sram_wdata,
+    input wire d_stall,                 // 数据访问暂停（来自 d_sram_to_sram_like）
+    // 暂停信号输出（用于 SRAM-like 转换）
+    output wire longest_stall,          // i_stall | d_stall | stall_divE
+    output wire other_stall,            // 除 i_stall/d_stall 外的其他暂停
     // 调试信号
     output wire [31:0] debug_wb_pc,
     output wire [3:0]  debug_wb_rf_wen,
@@ -27,11 +35,32 @@ module mips(
     // Link和Jump相关信号
     wire jalD,linkD,jrD,jalE,linkE,jrE,linkM,linkW;
     // stall和flush信号
-    wire stallD, flushD, flushE, stallE, flushM, flushW;
+    wire stallD, flushD, flushE, stallE, stallM, stallW, flushM, flushW;
 
     wire cp0weM, cp0reE, syscallM, breakM, eretM, riM;
     
-    assign inst_ram_ena = 1'b1; //指令存储器始终使能
+    // AXI接口信号映射
+    wire [31:0] pc;
+    wire [31:0] alu_result;
+    wire [31:0] mem_wdata;
+    wire [3:0] data_ram_wea;
+    wire data_ram_ena;
+    
+    // 异常信号 - 用于禁止取指
+    wire flush_exception;
+    
+    // PC非对齐检测
+    wire pc_misaligned = (pc[1:0] != 2'b00);
+    
+    // 当有异常或PC非对齐时禁止取指
+    // 1. flush_exception: 异常发生时停止取指
+    // 2. pc_misaligned: PC非对齐时停止取指（避免发送无效AXI请求导致stall）
+    assign inst_sram_en = ~flush_exception & ~pc_misaligned;
+    assign inst_sram_addr = pc;
+    assign data_sram_en = data_ram_ena;
+    assign data_sram_addr = alu_result;
+    assign data_sram_wen = data_ram_wea;
+    assign data_sram_wdata = mem_wdata;
 	
     // mips = datapath + controller
     controller c(
@@ -43,6 +72,8 @@ module mips(
         .flushD(flushD),
         .flushE(flushE),
         .stallE(stallE),
+        .stallM(stallM),
+        .stallW(stallW),
         .flushM(flushM),
         .flushW(flushW),
         // 控制信号输出
@@ -76,8 +107,8 @@ module mips(
     datapath dp(
         .clk(clk),
         .rst(rst),
-        .instr(instr),
-        .mem_rdata(mem_rdata),
+        .instr(inst_sram_rdata),
+        .mem_rdata(data_sram_rdata),
         .pc(pc),
         .writedataM(mem_wdata),
         .alu_resultM(alu_result),
@@ -109,13 +140,23 @@ module mips(
         .riM(riM),
         // 传出instrD给controller
         .instrD_to_controller(instrD),
+        // AXI暂停信号输入
+        .i_stall(i_stall),
+        .d_stall(d_stall),
         // 输出Hazard信号
         .stallD(stallD),
         .flushD(flushD),
         .flushE(flushE),
         .stallE(stallE),
+        .stallM(stallM),
+        .stallW(stallW),
         .flushM(flushM),
         .flushW(flushW),
+        // AXI暂停信号输出
+        .longest_stall(longest_stall),
+        .other_stall(other_stall),
+        // 异常信号输出
+        .flush_exception(flush_exception),
         // 调试信号
         .debug_wb_pc(debug_wb_pc),
         .debug_wb_rf_wen(debug_wb_rf_wen),

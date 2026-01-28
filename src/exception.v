@@ -17,14 +17,15 @@ module exception(
 );
 
    //INTERUPT
+   // 中断检测逻辑（与参考实现一致）
+   // {ext_int[5:0], cause[9:8]} 与 status[15:8] 做与操作
+   // status[0] = IE (全局中断使能)
+   // status[1] = EXL (异常级别，为1时禁止中断)
+   // status[15:8] = IM (中断屏蔽位)
+   // cause[9:8] = IP[1:0] (软件中断待处理位)
    wire irp;
-   //             //IE             //EXL            
-   assign irp =   cp0_status[0] && ~cp0_status[1] && (
-                     //IM                 //IP
-                  ( |(cp0_status[9:8] & cp0_cause[9:8]) ) ||        //soft interupt
-                  ( |(cp0_status[15:10] & ext_int) )           //hard interupt
-   );
-   // 全局中断开启,且没有例外在处理,识别软件中断或者硬件中断;
+   assign irp = (({ext_int, cp0_cause[9:8]} & cp0_status[15:8]) != 8'h00) &&
+                (cp0_status[1] == 1'b0) && (cp0_status[0] == 1'b1);
 
    assign except_type =    (irp)                   ? `EXC_TYPE_INT :
                            (addrErrorLw | pcError) ? `EXC_TYPE_ADEL :
