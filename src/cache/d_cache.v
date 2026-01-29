@@ -1,6 +1,7 @@
 // 数据缓存设计
 `timescale 1ns / 1ps
 
+(* keep_hierarchy = "yes" *)
 module d_cache(
     input wire clk, rst,
     // CPU 侧接口
@@ -26,17 +27,17 @@ module d_cache(
     localparam OFFSET_WIDTH = 4;
     localparam TAG_WIDTH = 32 - INDEX_WIDTH - OFFSET_WIDTH;
     localparam LINE_NUM = 256;
-    reg [TAG_WIDTH-1:0] tag_mem [0:LINE_NUM-1];
-    reg                 valid_mem [0:LINE_NUM-1];
-    reg [127:0]         data_mem [0:LINE_NUM-1];
+    (* ram_style = "distributed" *) reg [TAG_WIDTH-1:0] tag_mem [0:LINE_NUM-1];
+    reg valid_mem [0:LINE_NUM-1];
+    (* ram_style = "distributed" *) reg [127:0] dcache_data [0:LINE_NUM-1];
     wire [TAG_WIDTH-1:0] cpu_tag    = cpu_addr[31:12];
     wire [INDEX_WIDTH-1:0] cpu_index  = cpu_addr[11:4];
     wire [OFFSET_WIDTH-1:0] cpu_offset = cpu_addr[3:0];
 
     // 命中判定
     wire hit;
-    wire [127:0] line_data = data_mem[cpu_index];
-    wire [127:0]data_mem_FE=data_mem[8'b11111110];  // for test
+    wire [127:0] line_data = dcache_data[cpu_index];
+    wire [127:0] dcache_data_FE = dcache_data[8'b11111110];  // for test
     wire valid = valid_mem[cpu_index];
     // 写请求不看hit信号，直接去 AXI
     assign hit = cpu_en && (cpu_wen == 0) && valid && (tag_mem[cpu_index] == cpu_tag);
@@ -81,28 +82,28 @@ module d_cache(
                                 // 计算实际的字节位置：字选择(offset[3:2]) * 32 + 字内字节偏移(wen对应位置) * 8
                                 case (cpu_offset[3:2])
                                     2'b00: begin
-                                        if (cpu_wen[0]) data_mem[cpu_index][7:0]   <= cpu_wdata[7:0];
-                                        if (cpu_wen[1]) data_mem[cpu_index][15:8]  <= cpu_wdata[15:8];
-                                        if (cpu_wen[2]) data_mem[cpu_index][23:16] <= cpu_wdata[23:16];
-                                        if (cpu_wen[3]) data_mem[cpu_index][31:24] <= cpu_wdata[31:24];
+                                        if (cpu_wen[0]) dcache_data[cpu_index][7:0]   <= cpu_wdata[7:0];
+                                        if (cpu_wen[1]) dcache_data[cpu_index][15:8]  <= cpu_wdata[15:8];
+                                        if (cpu_wen[2]) dcache_data[cpu_index][23:16] <= cpu_wdata[23:16];
+                                        if (cpu_wen[3]) dcache_data[cpu_index][31:24] <= cpu_wdata[31:24];
                                     end
                                     2'b01: begin
-                                        if (cpu_wen[0]) data_mem[cpu_index][39:32]  <= cpu_wdata[7:0];
-                                        if (cpu_wen[1]) data_mem[cpu_index][47:40]  <= cpu_wdata[15:8];
-                                        if (cpu_wen[2]) data_mem[cpu_index][55:48]  <= cpu_wdata[23:16];
-                                        if (cpu_wen[3]) data_mem[cpu_index][63:56]  <= cpu_wdata[31:24];
+                                        if (cpu_wen[0]) dcache_data[cpu_index][39:32]  <= cpu_wdata[7:0];
+                                        if (cpu_wen[1]) dcache_data[cpu_index][47:40]  <= cpu_wdata[15:8];
+                                        if (cpu_wen[2]) dcache_data[cpu_index][55:48]  <= cpu_wdata[23:16];
+                                        if (cpu_wen[3]) dcache_data[cpu_index][63:56]  <= cpu_wdata[31:24];
                                     end
                                     2'b10: begin
-                                        if (cpu_wen[0]) data_mem[cpu_index][71:64]  <= cpu_wdata[7:0];
-                                        if (cpu_wen[1]) data_mem[cpu_index][79:72]  <= cpu_wdata[15:8];
-                                        if (cpu_wen[2]) data_mem[cpu_index][87:80]  <= cpu_wdata[23:16];
-                                        if (cpu_wen[3]) data_mem[cpu_index][95:88]  <= cpu_wdata[31:24];
+                                        if (cpu_wen[0]) dcache_data[cpu_index][71:64]  <= cpu_wdata[7:0];
+                                        if (cpu_wen[1]) dcache_data[cpu_index][79:72]  <= cpu_wdata[15:8];
+                                        if (cpu_wen[2]) dcache_data[cpu_index][87:80]  <= cpu_wdata[23:16];
+                                        if (cpu_wen[3]) dcache_data[cpu_index][95:88]  <= cpu_wdata[31:24];
                                     end
                                     2'b11: begin
-                                        if (cpu_wen[0]) data_mem[cpu_index][103:96]  <= cpu_wdata[7:0];
-                                        if (cpu_wen[1]) data_mem[cpu_index][111:104] <= cpu_wdata[15:8];
-                                        if (cpu_wen[2]) data_mem[cpu_index][119:112] <= cpu_wdata[23:16];
-                                        if (cpu_wen[3]) data_mem[cpu_index][127:120] <= cpu_wdata[31:24];
+                                        if (cpu_wen[0]) dcache_data[cpu_index][103:96]  <= cpu_wdata[7:0];
+                                        if (cpu_wen[1]) dcache_data[cpu_index][111:104] <= cpu_wdata[15:8];
+                                        if (cpu_wen[2]) dcache_data[cpu_index][119:112] <= cpu_wdata[23:16];
+                                        if (cpu_wen[3]) dcache_data[cpu_index][127:120] <= cpu_wdata[31:24];
                                     end
                                 endcase
                             end
@@ -128,10 +129,10 @@ module d_cache(
 
                 REFILL_WAIT: begin
                     if (axi_data_ok) begin
-                        if (refill_cnt == 0) data_mem[cpu_index][31:0]   <= axi_rdata;
-                        if (refill_cnt == 1) data_mem[cpu_index][63:32]  <= axi_rdata;
-                        if (refill_cnt == 2) data_mem[cpu_index][95:64]  <= axi_rdata;
-                        if (refill_cnt == 3) data_mem[cpu_index][127:96] <= axi_rdata;
+                        if (refill_cnt == 0) dcache_data[cpu_index][31:0]   <= axi_rdata;
+                        if (refill_cnt == 1) dcache_data[cpu_index][63:32]  <= axi_rdata;
+                        if (refill_cnt == 2) dcache_data[cpu_index][95:64]  <= axi_rdata;
+                        if (refill_cnt == 3) dcache_data[cpu_index][127:96] <= axi_rdata;
 
                         if (refill_cnt == 3) begin
                             tag_mem[cpu_index] <= cpu_tag;

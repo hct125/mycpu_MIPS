@@ -280,8 +280,9 @@ module mycpu_top(
         .wrap_data_data_ok (data_data_ok)
     );
     
-    // 将返回数据反馈给conf和cache路
-    assign conf_data_rdata_from_axi = data_rdata;
+    // 注意：conf_data_rdata_from_axi 已经由 bridge_2x1 驱动
+    // bridge_2x1 内部会将 wrap_data_rdata 赋值给 conf_data_rdata
+    // 所以这里不需要再次赋值，否则会导致多驱动错误
 
     // ========== AXI 桥 ==========
     cpu_axi_interface axi_bridge(

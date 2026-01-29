@@ -1,5 +1,6 @@
 `timescale 1ns / 1ps
 //寄存器堆模块：读数据为组合逻辑，两个读地址读出两个数据；写数据为时序逻辑，写使能控制
+(* keep_hierarchy = "yes" *)
 module regfile(
 	input wire clk,
 	input wire we3,                //写使能

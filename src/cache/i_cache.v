@@ -1,6 +1,7 @@
 // 指令缓存设计
 `timescale 1ns / 1ps
 
+(* keep_hierarchy = "yes" *)
 module i_cache(
     input wire clk, rst,
     // CPU 侧接口
@@ -25,10 +26,10 @@ module i_cache(
     localparam TAG_WIDTH = 32 - INDEX_WIDTH - OFFSET_WIDTH;
     localparam LINE_NUM = 1 << INDEX_WIDTH; // 256
     
-    // 内部存储
-    reg [TAG_WIDTH-1:0] tag_mem [0:LINE_NUM-1];   // 存放Tag
-    reg                 valid_mem [0:LINE_NUM-1]; // 存放有效位
-    reg [127:0]         data_mem [0:LINE_NUM-1];  // 存放数据
+    // 内部存储 - 使用 (* ram_style = "distributed" *) 属性
+    (* ram_style = "distributed" *) reg [TAG_WIDTH-1:0] tag_mem [0:LINE_NUM-1];
+    reg valid_mem [0:LINE_NUM-1];
+    (* ram_style = "distributed" *) reg [127:0] icache_data [0:LINE_NUM-1];
     
     // 地址分解
     wire [TAG_WIDTH-1:0] cpu_tag   = cpu_addr[31:12];
@@ -37,18 +38,21 @@ module i_cache(
     
     // 命中判定
     wire hit;
-    wire [127:0] line_data = data_mem[cpu_index];
+    (* keep = "true" *) wire [127:0] line_data;
+    assign line_data = icache_data[cpu_index];
     wire [TAG_WIDTH-1:0] saved_tag = tag_mem[cpu_index];
     wire valid = valid_mem[cpu_index];
     // CPU请求有效 & Tag匹配 & Valid为1 = 命中
     assign hit = cpu_en && valid && (saved_tag == cpu_tag);
 
     // 读取数据：根据索引进行选择
-    assign cpu_rdata = (cpu_offset[3:2] == 2'b00) ? line_data[31:0] :
-                       (cpu_offset[3:2] == 2'b01) ? line_data[63:32] :
-                       (cpu_offset[3:2] == 2'b10) ? line_data[95:64] :
-                                                    line_data[127:96];
-
+    (* keep = "true" *) wire [31:0] cpu_rdata_internal;
+    assign cpu_rdata_internal = (cpu_offset[3:2] == 2'b00) ? line_data[31:0] :
+                                (cpu_offset[3:2] == 2'b01) ? line_data[63:32] :
+                                (cpu_offset[3:2] == 2'b10) ? line_data[95:64] :
+                                                             line_data[127:96];
+    assign cpu_rdata = cpu_rdata_internal;
+    
     // 状态机：处理缺失重填
     localparam IDLE = 0, REFILL_REQ = 1, REFILL_WAIT = 2;
     reg [1:0] state;
@@ -89,10 +93,10 @@ module i_cache(
                     // 等待数据回来
                     if (axi_data_ok) begin
                         // 写入对应的字
-                        if (refill_cnt == 0) data_mem[cpu_index][31:0]   <= axi_rdata;
-                        if (refill_cnt == 1) data_mem[cpu_index][63:32]  <= axi_rdata;
-                        if (refill_cnt == 2) data_mem[cpu_index][95:64]  <= axi_rdata;
-                        if (refill_cnt == 3) data_mem[cpu_index][127:96] <= axi_rdata;
+                        if (refill_cnt == 0) icache_data[cpu_index][31:0]   <= axi_rdata;
+                        if (refill_cnt == 1) icache_data[cpu_index][63:32]  <= axi_rdata;
+                        if (refill_cnt == 2) icache_data[cpu_index][95:64]  <= axi_rdata;
+                        if (refill_cnt == 3) icache_data[cpu_index][127:96] <= axi_rdata;
 
                         if (refill_cnt == 3) begin
                             // 填满了一行，更新Tag和Valid
