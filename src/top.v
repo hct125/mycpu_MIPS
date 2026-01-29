@@ -2,7 +2,7 @@
 // top - AXI版本顶层模块
 // 架构：mips(SRAM) -> i_sram_to_sram_like/d_sram_to_sram_like -> cpu_axi_interface -> AXI
 // 模块名为 top，以匹配 soc_axi_lite_top.v 中的实例化
-// verilator 编译时顶层模块需要为mycpu_top
+// 编译用 verilator 则顶层模块需要为mycpu_top
 module mycpu_top(
     input wire aclk,
     input wire aresetn,
@@ -236,6 +236,11 @@ module mycpu_top(
         .bresp(bresp),
         .bvalid(bvalid),
         .bready(bready)
+    );
+
+    // 指令解码器，用于调试观察指令
+    instdec instdec(
+        .instr(inst_sram_rdata)
     );
 
 endmodule
