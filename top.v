@@ -2,6 +2,7 @@
 // top - AXI版本顶层模块
 // 架构：mips(SRAM) -> i_sram_to_sram_like/d_sram_to_sram_like -> cpu_axi_interface -> AXI
 // 模块名为 top，以匹配 soc_axi_lite_top.v 中的实例化
+// verilator 编译时顶层模块需要为mycpu_top
 module mycpu_top(
     input wire aclk,
     input wire aresetn,
@@ -134,50 +135,46 @@ module mycpu_top(
         .debug_wb_rf_wdata(debug_wb_rf_wdata)
     );
 
-    // ========== 指令 SRAM -> SRAM-like 转换 ==========
-    i_sram_to_sram_like i_sram_to_sram_like_inst(
+    // 新增：指令缓存实例
+    i_cache i_cache_inst(
         .clk(clk), 
         .rst(rst),
-        // SRAM 接口
-        .inst_sram_en(inst_sram_en),
-        .inst_sram_addr(inst_paddr),
-        .inst_sram_rdata(inst_sram_rdata),
-        .i_stall(i_stall),
-        // SRAM-like 接口
-        .inst_req(inst_req),
-        .inst_wr(inst_wr),
-        .inst_size(inst_size),
-        .inst_addr(inst_addr),
-        .inst_wdata(inst_wdata),
-        .inst_addr_ok(inst_addr_ok),
-        .inst_data_ok(inst_data_ok),
-        .inst_rdata(inst_rdata),
-        // 暂停信号
-        .longest_stall(longest_stall)
+        // CPU侧
+        .cpu_en(inst_sram_en),
+        .cpu_addr(inst_paddr),
+        .cpu_rdata(inst_sram_rdata),
+        .cpu_stall(i_stall),
+        // AXI桥侧
+        .axi_req(inst_req),
+        .axi_wr(inst_wr),
+        .axi_size(inst_size),
+        .axi_addr(inst_addr),
+        .axi_wdata(inst_wdata),
+        .axi_addr_ok(inst_addr_ok),
+        .axi_data_ok(inst_data_ok),
+        .axi_rdata(inst_rdata)
     );
 
-    // ========== 数据 SRAM -> SRAM-like 转换 ==========
-    d_sram_to_sram_like d_sram_to_sram_like_inst(
+    // 新增：数据缓存实例
+    d_cache d_cache_inst(
         .clk(clk),
         .rst(rst),
-        // SRAM 接口
-        .data_sram_en(data_sram_en),
-        .data_sram_addr(data_paddr),
-        .data_sram_rdata(data_sram_rdata),
-        .data_sram_wen(data_sram_wen),
-        .data_sram_wdata(data_sram_wdata),
-        .d_stall(d_stall),
-        // SRAM-like 接口
-        .data_req(data_req),
-        .data_wr(data_wr),
-        .data_size(data_size),
-        .data_addr(data_addr),
-        .data_wdata(data_wdata),
-        .data_addr_ok(data_addr_ok),
-        .data_data_ok(data_data_ok),
-        .data_rdata(data_rdata),
-        // 暂停信号
-        .longest_stall(longest_stall)
+        // CPU侧
+        .cpu_en     (data_sram_en),
+        .cpu_wen    (data_sram_wen),
+        .cpu_addr   (data_paddr),
+        .cpu_wdata  (data_sram_wdata),
+        .cpu_rdata  (data_sram_rdata),
+        .cpu_stall  (d_stall),
+        // AXI桥侧
+        .axi_req    (data_req),
+        .axi_wr     (data_wr),
+        .axi_size   (data_size),
+        .axi_addr   (data_addr),
+        .axi_wdata  (data_wdata),
+        .axi_addr_ok(data_addr_ok),
+        .axi_data_ok(data_data_ok),
+        .axi_rdata  (data_rdata)
     );
 
     // ========== AXI 桥 ==========
