@@ -1,3 +1,4 @@
+`timescale 1ns / 1ps
 // 指令 SRAM 到 SRAM-like 接口转换模块
 module i_sram_to_sram_like (
     input wire clk, rst,

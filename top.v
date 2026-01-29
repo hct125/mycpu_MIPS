@@ -2,7 +2,7 @@
 // top - AXI版本顶层模块
 // 架构：mips(SRAM) -> i_sram_to_sram_like/d_sram_to_sram_like -> cpu_axi_interface -> AXI
 // 模块名为 top，以匹配 soc_axi_lite_top.v 中的实例化
-module top(
+module mycpu_top(
     input wire aclk,
     input wire aresetn,
     input wire [5:0] ext_int,
